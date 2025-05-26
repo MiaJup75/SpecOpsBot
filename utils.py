@@ -1,16 +1,31 @@
+
+import json
 import requests
 
-def fetch_max_token_stats(token_address):
-    url = f"https://multichain-api.birdeye.so/solana/overview/token_stats?address={token_address}&time_frame=24h"
-    response = requests.get(url)
-    if response.status_code == 200:
-        return response.json().get("data", {})
-    return {}
+def load_config():
+    with open("config.json", "r") as f:
+        return json.load(f)
 
-def detect_suspicious_activity(stats):
-    suspicious_flags = []
-    if stats.get("price_change_pct") and abs(stats["price_change_pct"]) > 0.5:
-        suspicious_flags.append("⚠️ Large price swing detected")
-    if stats.get("volume_change_pct") and abs(stats["volume_change_pct"]) > 1.0:
-        suspicious_flags.append("⚠️ Volume spike")
-    return suspicious_flags
+config = load_config()
+WHITELIST = config.get("whitelist", [])
+MAX_TOKEN_ADDRESS = config.get("max_token")
+BIRDEYE_API_URL = f"https://multichain-api.birdeye.so/solana/overview/token_stats?address={MAX_TOKEN_ADDRESS}&time_frame=24h"
+
+def is_allowed(user_id):
+    return str(user_id) in WHITELIST
+
+def fetch_max_token_data():
+    try:
+        response = requests.get(BIRDEYE_API_URL)
+        response.raise_for_status()
+        data = response.json().get("data", {})
+        return {
+            "price": data.get("price", 0),
+            "market_cap": data.get("market_cap", 0),
+            "volume": data.get("volume_24h_quote", 0),
+            "fdv": data.get("fdv", 0),
+            "liquidity": data.get("liquidity", 0)
+        }
+    except Exception as e:
+        print(f"Error fetching token data: {e}")
+        return {}
