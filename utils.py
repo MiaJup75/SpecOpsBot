@@ -1,42 +1,36 @@
-
 import requests
 import json
 
-with open("config.json", "r") as f:
-    config = json.load(f)
-
-MAX_TOKEN = config["max_token"]
-WALLETS = config["wallets"]
-WHITELIST = config["whitelist"]
-DEXSCREENER_API = f"https://api.dexscreener.com/latest/dex/pairs/solana/8fipyfvbusjpuv2wwyk8eppnk5f9dgzs8uasputwszdc"
+def is_allowed(user_id):
+    try:
+        with open("config.json") as f:
+            config = json.load(f)
+        return str(user_id) in config.get("whitelist", [])
+    except:
+        return False
 
 def fetch_max_token_data():
     try:
-        response = requests.get(DEXSCREENER_API)
-        if response.status_code != 200:
-            return None
-        data = response.json().get("pair")
+        url = "https://api.dexscreener.com/latest/dex/pairs/solana/8fipyfvbusjpuv2wwyk8eppnk5f9dgzs8uasputwszdc"
+        res = requests.get(url)
+        data = res.json().get("pair", {})
         return {
-            "priceUsd": data["priceUsd"],
-            "volume": data["volume"]["h24"],
-            "liquidity": data["liquidity"]["usd"],
-            "fdv": data["fdv"],
-            "marketCap": data["marketCap"],
-            "buys": data["txns"]["h24"]["buys"],
-            "sells": data["txns"]["h24"]["sells"]
+            "price_usd": data.get("priceUsd"),
+            "volume_usd": data.get("volume", {}).get("h24"),
+            "liquidity_usd": data.get("liquidity", {}).get("usd"),
+            "market_cap": data.get("fdv"),
+            "price_change": data.get("priceChange", {}).get("h24"),
+            "url": data.get("url")
         }
-    except Exception:
+    except:
         return None
 
-def fetch_trending_coins():
-    # Placeholder dummy data
+def get_trending_coins():
+    # Placeholder mock data
     return [
-        "1. PEPE  🚀",
-        "2. BONK  🐶",
-        "3. WEN   💧",
-        "4. SAMO  🐕",
-        "5. TOSHI 🧠"
+        {"name": "SolDog", "price": "0.0012", "url": "https://dexscreener.com/solana/dummy1"},
+        {"name": "SolMoon", "price": "0.0005", "url": "https://dexscreener.com/solana/dummy2"},
+        {"name": "WAGMI", "price": "0.034", "url": "https://dexscreener.com/solana/dummy3"},
+        {"name": "Frenz", "price": "0.0021", "url": "https://dexscreener.com/solana/dummy4"},
+        {"name": "PepeSol", "price": "0.0007", "url": "https://dexscreener.com/solana/dummy5"},
     ]
-
-def is_allowed(user_id):
-    return str(user_id) in WHITELIST
