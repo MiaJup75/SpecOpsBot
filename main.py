@@ -1,125 +1,77 @@
-import logging
+from telegram import Bot, Update
+from telegram.ext import CommandHandler, Dispatcher
 from flask import Flask, request
-from telegram import Bot, Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Dispatcher, CommandHandler, CallbackContext
-from apscheduler.schedulers.background import BackgroundScheduler
 import json
+import logging
+import os
+from apscheduler.schedulers.background import BackgroundScheduler
 import pytz
 
-from utils import (
-    fetch_max_token_data,
-    is_allowed,
-    get_trending_coins,
-    get_new_tokens,
-    check_suspicious_activity,
-    get_wallet_activity,
-    get_post_launch_scorecard
-)
+from utils import fetch_max_token_data, is_allowed, get_trending_coins
 
-with open("config.json", "r") as f:
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+app = Flask(__name__)
+
+# Load config
+with open("config.json") as f:
     config = json.load(f)
 
 TOKEN = config["telegram_token"]
 WHITELIST = config["whitelist"]
 bot = Bot(token=TOKEN)
+dispatcher = Dispatcher(bot, None, workers=1)
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger()
+@app.route("/")
+def index():
+    return "Bot is running!"
 
-app = Flask(__name__)
-dispatcher = Dispatcher(bot, None, workers=1, use_context=True)
+@app.route("/hook", methods=["POST"])
+def webhook():
+    update = Update.de_json(request.get_json(force=True), bot)
+    dispatcher.process_update(update)
+    return "ok"
 
-def start(update: Update, context: CallbackContext):
-    user_id = str(update.effective_user.id)
-    if user_id not in WHITELIST:
-        update.message.reply_text("❌ You are not authorized to use this bot.")
-        return
+def start(update, context):
+    message = """<b>Welcome to SolMadSpecBot!</b>
 
-    message = (
-        "<b>Welcome to SolMadSpecBot!</b>
-
-"
-        "Available Commands:
-"
-        "/max - View MAX token stats
-"
-        "/trending - Top 5 trending Solana meme coins
-"
-        "/new - New tokens (<12h old)
-"
-        "/alerts - Suspicious activity alerts
-"
-        "/wallets - Monitored wallet activity
-"
-        "/score - Post-launch scorecard"
-    )
+Choose a command:
+/max – MAX Token stats & alerts
+/wallets – Watchlist wallet activity
+/trending – Top 5 SOL meme coins
+/new – Just launched tokens (under 12h)
+/alerts – Suspicious bot/dev/Liquidity moves"""
     context.bot.send_message(chat_id=update.effective_chat.id, text=message, parse_mode="HTML")
 
-def max(update: Update, context: CallbackContext):
-    user_id = str(update.effective_user.id)
-    if user_id not in WHITELIST:
-        update.message.reply_text("❌ You are not authorized to use this command.")
+def max_command(update, context):
+    if not is_allowed(update.effective_user.id, WHITELIST):
         return
-    try:
-        message = fetch_max_token_data()
-        context.bot.send_message(chat_id=update.effective_chat.id, text=message, parse_mode="HTML")
-    except Exception as e:
-        logger.error(f"Error in /max: {e}")
-        update.message.reply_text("⚠️ Failed to fetch MAX token data.")
+    token_data = fetch_max_token_data()
+    if not token_data:
+        context.bot.send_message(chat_id=update.effective_chat.id, text="Unable to fetch MAX token data.")
+        return
+    message = f"""🐶 <b>MAX Token Update</b>
 
-def trending(update: Update, context: CallbackContext):
-    coins = get_trending_coins()
-    context.bot.send_message(chat_id=update.effective_chat.id, text=coins, parse_mode="HTML")
-
-def new_tokens(update: Update, context: CallbackContext):
-    tokens = get_new_tokens()
-    context.bot.send_message(chat_id=update.effective_chat.id, text=tokens, parse_mode="HTML")
-
-def alerts(update: Update, context: CallbackContext):
-    alert = check_suspicious_activity()
-    context.bot.send_message(chat_id=update.effective_chat.id, text=alert, parse_mode="HTML")
-
-def wallets(update: Update, context: CallbackContext):
-    activity = get_wallet_activity()
-    context.bot.send_message(chat_id=update.effective_chat.id, text=activity, parse_mode="HTML")
-
-def scorecard(update: Update, context: CallbackContext):
-    score = get_post_launch_scorecard()
-    context.bot.send_message(chat_id=update.effective_chat.id, text=score, parse_mode="HTML")
-
-@app.route(f"/hook", methods=["POST"])
-def webhook_handler():
-    if request.method == "POST":
-        update = Update.de_json(request.get_json(force=True), bot)
-        dispatcher.process_update(update)
-    return "OK"
-
-@app.route("/", methods=["GET"])
-def home():
-    return "SolMadSpecBot is alive!"
-
-dispatcher.add_handler(CommandHandler("start", start))
-dispatcher.add_handler(CommandHandler("max", max))
-dispatcher.add_handler(CommandHandler("trending", trending))
-dispatcher.add_handler(CommandHandler("new", new_tokens))
-dispatcher.add_handler(CommandHandler("alerts", alerts))
-dispatcher.add_handler(CommandHandler("wallets", wallets))
-dispatcher.add_handler(CommandHandler("score", scorecard))
-
-scheduler = BackgroundScheduler(timezone=pytz.timezone("Asia/Bangkok"))
-scheduler.start()
+💰 Price: ${token_data['price_usd']}
+📊 Volume (24h): ${token_data['volume_usd']}
+💧 Liquidity: ${token_data['liquidity_usd']}
+🏷️ FDV: ${token_data['fdv']}
+"""
+    context.bot.send_message(chat_id=update.effective_chat.id, text=message, parse_mode="HTML")
 
 def send_daily_report():
-    try:
-        for user_id in WHITELIST:
-            message = "<b>📊 Daily Report (placeholder)</b>
+    logger.info("Sending placeholder daily report.")
+    # Implement daily alert message content here
 
-Use /max, /trending, /new, /alerts, /wallets or /score."
-            bot.send_message(chat_id=user_id, text=message, parse_mode="HTML")
-    except Exception as e:
-        logger.error(f"Error sending daily report: {e}")
+# Register handlers
+dispatcher.add_handler(CommandHandler("start", start))
+dispatcher.add_handler(CommandHandler("max", max_command))
 
+# Schedule daily report at 9AM Bangkok time
+scheduler = BackgroundScheduler(timezone=pytz.timezone("Asia/Bangkok"))
 scheduler.add_job(send_daily_report, "cron", hour=9)
+scheduler.start()
 
 if __name__ == "__main__":
     logger.info("🔄 Starting webhook server...")
