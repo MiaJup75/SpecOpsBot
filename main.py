@@ -1,58 +1,78 @@
-import os
 import json
-import logging
+import requests
 from flask import Flask, request
 from telegram import Bot, Update
 from telegram.ext import Dispatcher, CommandHandler, CallbackContext
-import requests
+from apscheduler.schedulers.background import BackgroundScheduler
+import logging
 
-TOKEN = os.environ.get("TELEGRAM_TOKEN")
-WHITELIST = ["7623873892"]
-MAX_TOKEN = "EQbLvkkT8htw9uiC6AG4wwHEsmV4zHQkTNyF6yJDpump"
+# Load config
+with open("config.json", "r") as f:
+    config = json.load(f)
 
+TOKEN = config["telegram_token"]
+MAX_TOKEN = config["max_token"]
+WHITELIST = config["whitelist"]
 bot = Bot(token=TOKEN)
+
+# Logging
+logging.basicConfig(level=logging.INFO)
+
+# Flask app
 app = Flask(__name__)
 dispatcher = Dispatcher(bot, update_queue=None, use_context=True)
 
-logging.basicConfig(level=logging.INFO)
-
+# /start handler
 def start(update: Update, context: CallbackContext):
     user_id = str(update.effective_user.id)
     if user_id not in WHITELIST:
-        update.message.reply_text("⛔ You’re not authorized to use this bot.")
         return
     update.message.reply_text("🤖 Welcome to SolMadSpecBot!\nTracking wallets, MAX token & meme coins daily...")
 
+# /max handler
 def max_command(update: Update, context: CallbackContext):
     user_id = str(update.effective_user.id)
     if user_id not in WHITELIST:
-        update.message.reply_text("⛔ You’re not authorized to use this bot.")
         return
+
     try:
-        url = f"https://multichain-api.birdeye.so/solana/overview/token_stats?address={MAX_TOKEN}&time_frame=24h"
-        headers = {"X-API-KEY": "public"}
-        res = requests.get(url, headers=headers).json()
-        data = res.get("data", {})
+        logging.info("Fetching MAX token price...")
+        response = requests.get(
+            f"https://multichain-api.birdeye.so/solana/overview/token_stats?address={MAX_TOKEN}&time_frame=24h",
+            headers={"X-API-KEY": "public"}
+        )
+        data = response.json().get("data", {})
+
         price = float(data.get("price", 0))
         market_cap = round(price * 1_000_000_000, 2)
+
         message = f"🌐 MAX Token Info:\nPrice: ${price:.9f}\nMarket Cap: ${market_cap:,.2f}"
     except Exception as e:
+        logging.error("Error fetching MAX data: %s", e)
         message = f"⚠️ Error fetching MAX data: {e}"
+
     update.message.reply_text(message)
 
-dispatcher.add_handler(CommandHandler("start", start))
-dispatcher.add_handler(CommandHandler("max", max_command))
-
-@app.route('/hook', methods=['POST'])
+# Webhook route
+@app.route("/hook", methods=["POST"])
 def webhook():
     update = Update.de_json(request.get_json(force=True), bot)
     dispatcher.process_update(update)
-    return "OK"
+    return "OK", 200
 
-@app.route('/')
-def index():
-    return 'Bot is running.'
+# Bind handlers
+dispatcher.add_handler(CommandHandler("start", start))
+dispatcher.add_handler(CommandHandler("max", max_command))
 
-if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 5000))
-    app.run(host='0.0.0.0', port=port)
+# Scheduler (optional)
+def send_daily_report():
+    logging.info("Sending daily report placeholder")
+
+scheduler = BackgroundScheduler()
+scheduler.add_job(send_daily_report, "cron", hour=9)
+scheduler.start()
+
+# Main entry point
+if __name__ == "__main__":
+    logging.info("🔄 Starting webhook server...")
+    app.run(host="0.0.0.0", port=10000)
