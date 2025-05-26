@@ -39,16 +39,13 @@ def max_command(update: Update, context):
     if not is_allowed(update.effective_user.id):
         return
     price, market_cap, volume, fdv = fetch_max_token_data()
-    message = (
-        f"🐶 <b>MAX Token Update</b>
-"
-        f"💰 Price: ${price:.8f}
-"
-        f"📊 Market Cap: ${market_cap:,.0f}
-"
-        f"📈 Volume (24h): ${volume:,.0f}
-"
-        f"🏦 FDV: ${fdv:,.0f}"
+   message = f"""
+🐶 <b>MAX Token Update</b>
+💵 Price: ${price:.8f}
+🏦 Market Cap: ${market_cap:,.0f}
+📊 Volume (24h): ${volume:,.0f}
+🏛️ FDV: ${fdv:,.0f}
+"""
     )
     context.bot.send_message(chat_id=update.effective_chat.id, text=message, parse_mode=ParseMode.HTML)
 
