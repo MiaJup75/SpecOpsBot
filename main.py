@@ -1,90 +1,126 @@
 import logging
-from telegram import Update, ParseMode
-from telegram.ext import Updater, CommandHandler, CallbackContext
-from utils import fetch_max_token_data, get_trending_coins, is_allowed
-from apscheduler.schedulers.background import BackgroundScheduler
-from pytz import timezone
-import json
-import os
 from flask import Flask, request
+from telegram import Bot, Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import Dispatcher, CommandHandler, CallbackContext
+from apscheduler.schedulers.background import BackgroundScheduler
+import json
+import pytz
 
-# Load config
+from utils import (
+    fetch_max_token_data,
+    is_allowed,
+    get_trending_coins,
+    get_new_tokens,
+    check_suspicious_activity,
+    get_wallet_activity,
+    get_post_launch_scorecard
+)
+
 with open("config.json", "r") as f:
     config = json.load(f)
 
 TOKEN = config["telegram_token"]
 WHITELIST = config["whitelist"]
+bot = Bot(token=TOKEN)
 
-# Logging setup
 logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+logger = logging.getLogger()
 
-bot = None
 app = Flask(__name__)
-scheduler = BackgroundScheduler(timezone=timezone("Asia/Bangkok"))
+dispatcher = Dispatcher(bot, None, workers=1, use_context=True)
 
-# Commands
 def start(update: Update, context: CallbackContext):
-    message = f"""<b>Welcome to SolMadSpecBot!</b>
-Here are the available commands:
-/max - MAX Token Tracker
-/wallets - Watchlist Wallet Activity
-/trending - Top 5 Solana Meme Coins
-/new - Newly Launched Tokens
-/alerts - Suspicious Activity Flags"""
-    context.bot.send_message(chat_id=update.effective_chat.id, text=message, parse_mode=ParseMode.HTML)
+    user_id = str(update.effective_user.id)
+    if user_id not in WHITELIST:
+        update.message.reply_text("❌ You are not authorized to use this bot.")
+        return
 
-def max_token(update: Update, context: CallbackContext):
-    if not is_allowed(update, WHITELIST):
+    message = (
+        "<b>Welcome to SolMadSpecBot!</b>
+
+"
+        "Available Commands:
+"
+        "/max - View MAX token stats
+"
+        "/trending - Top 5 trending Solana meme coins
+"
+        "/new - New tokens (<12h old)
+"
+        "/alerts - Suspicious activity alerts
+"
+        "/wallets - Monitored wallet activity
+"
+        "/score - Post-launch scorecard"
+    )
+    context.bot.send_message(chat_id=update.effective_chat.id, text=message, parse_mode="HTML")
+
+def max(update: Update, context: CallbackContext):
+    user_id = str(update.effective_user.id)
+    if user_id not in WHITELIST:
+        update.message.reply_text("❌ You are not authorized to use this command.")
         return
     try:
-        result = fetch_max_token_data()
-        context.bot.send_message(chat_id=update.effective_chat.id, text=result, parse_mode=ParseMode.HTML)
+        message = fetch_max_token_data()
+        context.bot.send_message(chat_id=update.effective_chat.id, text=message, parse_mode="HTML")
     except Exception as e:
-        context.bot.send_message(chat_id=update.effective_chat.id, text="Error fetching MAX token data.")
-        logger.error(f"MAX command error: {e}")
+        logger.error(f"Error in /max: {e}")
+        update.message.reply_text("⚠️ Failed to fetch MAX token data.")
 
 def trending(update: Update, context: CallbackContext):
-    if not is_allowed(update, WHITELIST):
-        return
-    try:
-        result = get_trending_coins()
-        context.bot.send_message(chat_id=update.effective_chat.id, text=result, parse_mode=ParseMode.HTML)
-    except Exception as e:
-        context.bot.send_message(chat_id=update.effective_chat.id, text="Error fetching trending coins.")
-        logger.error(f"Trending command error: {e}")
+    coins = get_trending_coins()
+    context.bot.send_message(chat_id=update.effective_chat.id, text=coins, parse_mode="HTML")
 
-def send_daily_report():
-    # Placeholder logic
-    message = "<b>📊 Daily Report (placeholder)</b>"
-    for user_id in WHITELIST:
-        try:
-            bot.send_message(chat_id=user_id, text=message, parse_mode=ParseMode.HTML)
-        except Exception as e:
-            logger.error(f"Daily report error: {e}")
+def new_tokens(update: Update, context: CallbackContext):
+    tokens = get_new_tokens()
+    context.bot.send_message(chat_id=update.effective_chat.id, text=tokens, parse_mode="HTML")
 
-@app.route("/", methods=["GET", "POST"])
-def webhook():
+def alerts(update: Update, context: CallbackContext):
+    alert = check_suspicious_activity()
+    context.bot.send_message(chat_id=update.effective_chat.id, text=alert, parse_mode="HTML")
+
+def wallets(update: Update, context: CallbackContext):
+    activity = get_wallet_activity()
+    context.bot.send_message(chat_id=update.effective_chat.id, text=activity, parse_mode="HTML")
+
+def scorecard(update: Update, context: CallbackContext):
+    score = get_post_launch_scorecard()
+    context.bot.send_message(chat_id=update.effective_chat.id, text=score, parse_mode="HTML")
+
+@app.route(f"/hook", methods=["POST"])
+def webhook_handler():
     if request.method == "POST":
         update = Update.de_json(request.get_json(force=True), bot)
-        dp.process_update(update)
-        return "ok"
-    return "Webhook Active"
+        dispatcher.process_update(update)
+    return "OK"
+
+@app.route("/", methods=["GET"])
+def home():
+    return "SolMadSpecBot is alive!"
+
+dispatcher.add_handler(CommandHandler("start", start))
+dispatcher.add_handler(CommandHandler("max", max))
+dispatcher.add_handler(CommandHandler("trending", trending))
+dispatcher.add_handler(CommandHandler("new", new_tokens))
+dispatcher.add_handler(CommandHandler("alerts", alerts))
+dispatcher.add_handler(CommandHandler("wallets", wallets))
+dispatcher.add_handler(CommandHandler("score", scorecard))
+
+scheduler = BackgroundScheduler(timezone=pytz.timezone("Asia/Bangkok"))
+scheduler.start()
+
+def send_daily_report():
+    try:
+        for user_id in WHITELIST:
+            message = "<b>📊 Daily Report (placeholder)</b>
+
+Use /max, /trending, /new, /alerts, /wallets or /score."
+            bot.send_message(chat_id=user_id, text=message, parse_mode="HTML")
+    except Exception as e:
+        logger.error(f"Error sending daily report: {e}")
+
+scheduler.add_job(send_daily_report, "cron", hour=9)
 
 if __name__ == "__main__":
-    from telegram import Bot
-    from telegram.ext import Dispatcher
-
-    bot = Bot(token=TOKEN)
-    dp = Dispatcher(bot, None, workers=1, use_context=True)
-
-    dp.add_handler(CommandHandler("start", start))
-    dp.add_handler(CommandHandler("max", max_token))
-    dp.add_handler(CommandHandler("trending", trending))
-
-    scheduler.add_job(send_daily_report, "cron", hour=9)
-    scheduler.start()
-
-    bot.set_webhook(url=f"https://solmad-spec-bot.onrender.com/")
     logger.info("🔄 Starting webhook server...")
     app.run(host="0.0.0.0", port=10000)
