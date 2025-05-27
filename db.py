@@ -1,55 +1,58 @@
 import sqlite3
-import os
-from datetime import datetime
-
-DB_FILE = "solmad.db"
 
 def init_db():
-    conn = sqlite3.connect(DB_FILE)
+    conn = sqlite3.connect("solmad.db")
     c = conn.cursor()
-    c.execute("""CREATE TABLE IF NOT EXISTS watched_wallets (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+    # Wallet watchlist with labels
+    c.execute('''CREATE TABLE IF NOT EXISTS wallets (
         label TEXT,
-        address TEXT UNIQUE
-    )""")
-    c.execute("""CREATE TABLE IF NOT EXISTS watched_tokens (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        symbol TEXT UNIQUE,
-        added_at TEXT
-    )""")
+        address TEXT PRIMARY KEY
+    )''')
+
+    # Token tracking list
+    c.execute('''CREATE TABLE IF NOT EXISTS tokens (
+        symbol TEXT PRIMARY KEY
+    )''')
+
     conn.commit()
     conn.close()
 
+# WALLET TRACKING
 def add_wallet(label, address):
-    conn = sqlite3.connect(DB_FILE)
+    conn = sqlite3.connect("solmad.db")
     c = conn.cursor()
-    try:
-        c.execute("INSERT OR IGNORE INTO watched_wallets (label, address) VALUES (?, ?)", (label, address))
-        conn.commit()
-    finally:
-        conn.close()
+    c.execute("INSERT OR REPLACE INTO wallets (label, address) VALUES (?, ?)", (label, address))
+    conn.commit()
+    conn.close()
 
 def get_wallets():
-    conn = sqlite3.connect(DB_FILE)
+    conn = sqlite3.connect("solmad.db")
     c = conn.cursor()
-    c.execute("SELECT label, address FROM watched_wallets")
-    rows = c.fetchall()
+    c.execute("SELECT label, address FROM wallets")
+    results = c.fetchall()
     conn.close()
-    return rows
+    return results
 
+# TOKEN TRACKING
 def add_token(symbol):
-    conn = sqlite3.connect(DB_FILE)
+    conn = sqlite3.connect("solmad.db")
     c = conn.cursor()
-    try:
-        c.execute("INSERT OR IGNORE INTO watched_tokens (symbol, added_at) VALUES (?, ?)", (symbol.upper(), datetime.utcnow().isoformat()))
-        conn.commit()
-    finally:
-        conn.close()
+    c.execute("INSERT OR IGNORE INTO tokens (symbol) VALUES (?)", (symbol.upper(),))
+    conn.commit()
+    conn.close()
 
 def get_tokens():
-    conn = sqlite3.connect(DB_FILE)
+    conn = sqlite3.connect("solmad.db")
     c = conn.cursor()
-    c.execute("SELECT symbol FROM watched_tokens")
-    rows = c.fetchall()
+    c.execute("SELECT symbol FROM tokens")
+    tokens = [row[0] for row in c.fetchall()]
     conn.close()
-    return [row[0] for row in rows]
+    return tokens
+
+def remove_token(symbol):
+    conn = sqlite3.connect("solmad.db")
+    c = conn.cursor()
+    c.execute("DELETE FROM tokens WHERE symbol = ?", (symbol.upper(),))
+    conn.commit()
+    conn.close()
