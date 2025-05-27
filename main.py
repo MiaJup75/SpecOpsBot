@@ -88,10 +88,10 @@ def help_command(update: Update, context: CallbackContext) -> None:
 
 # --- Scheduler Job --- #
 
-def send_daily_report(context: CallbackContext) -> None:
+def send_daily_report(bot):
     chat_id = os.getenv("CHAT_ID")
     report = get_full_daily_report()
-    context.bot.send_message(chat_id=chat_id, text=report, parse_mode=ParseMode.HTML)
+    bot.send_message(chat_id=chat_id, text=report, parse_mode=ParseMode.HTML)
 
 # --- Register Handlers --- #
 
@@ -108,7 +108,7 @@ dispatcher.add_handler(CallbackQueryHandler(handle_callback))
 # --- Scheduler Setup --- #
 
 scheduler = BackgroundScheduler()
-scheduler.add_job(send_daily_report, 'cron', hour=9, minute=0, timezone='Asia/Bangkok')
+scheduler.add_job(lambda: send_daily_report(dispatcher.bot), 'cron', hour=9, minute=0, timezone='Asia/Bangkok')
 scheduler.start()
 
 # --- Webhook Setup --- #
