@@ -18,19 +18,26 @@ from stealth_scanner import scan_new_tokens
 from price_alerts import check_price_triggers
 from mirror_watch import mirror_wallets
 from botnet import botnet_alerts
-from gastime import fetch_recent_gas_prices  # Newly added for gas timing
+from gastime import fetch_recent_gas_prices  # Gas timing module
+
+# New imports for auto trading
+from wallet import Wallet
+from trade import get_swap_routes, execute_swap
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 TOKEN = os.getenv("BOT_TOKEN")
 PORT = int(os.environ.get('PORT', 10000))
+BURNER_SECRET_KEY_B64 = os.getenv("BURNER_SECRET_KEY_B64")
 
 app = Flask(__name__)
 updater = Updater(token=TOKEN, use_context=True)
 dispatcher: Dispatcher = updater.dispatcher
 
 bangkok_tz = pytz.timezone('Asia/Bangkok')
+
+wallet = Wallet(BURNER_SECRET_KEY_B64) if BURNER_SECRET_KEY_B64 else None
 
 def get_main_keyboard():
     return InlineKeyboardMarkup([
@@ -60,7 +67,7 @@ Use the buttons below or type:
 /max /wallets /trending  
 /new /alerts /debug  
 /pnl /sentiment /tradeprompt /classify  
-/watch &lt;wallet&gt; /addtoken $TOKEN /tokens /gastime
+/watch &lt;wallet&gt; /addtoken $TOKEN /tokens /gastime /autobuy
 
 Daily updates sent at 9AM Bangkok time (GMT+7).""",
         reply_markup=get_main_keyboard(),
@@ -73,6 +80,35 @@ def help_command(update: Update, context: CallbackContext) -> None:
 def gastime_command(update: Update, context: CallbackContext) -> None:
     msg = fetch_recent_gas_prices()
     update.message.reply_text(msg, parse_mode=ParseMode.HTML)
+
+def autobuy_command(update: Update, context: CallbackContext) -> None:
+    if not wallet:
+        update.message.reply_text("⚠️ Auto trading wallet not configured.", parse_mode=ParseMode.HTML)
+        return
+
+    if len(context.args) < 2:
+        update.message.reply_text("Usage: /autobuy $TOKEN <amount>", parse_mode=ParseMode.HTML)
+        return
+
+    token_symbol = context.args[0].lstrip("$").upper()
+    amount_str = context.args[1]
+    try:
+        amount = float(amount_str)
+        # TODO: Replace with actual mint address lookup or DB mapping
+        token_mint = "So11111111111111111111111111111111111111112"  # Example mint (SOL)
+        lamports_amount = int(amount * 1e9)
+
+        routes = get_swap_routes(input_mint="So11111111111111111111111111111111111111112",  # USDC mint for example
+                                 output_mint=token_mint,
+                                 amount=lamports_amount)
+        if not routes or not routes.get("data"):
+            update.message.reply_text(f"⚠️ No swap routes found for {token_symbol}.", parse_mode=ParseMode.HTML)
+            return
+
+        result = execute_swap(routes["data"][0])
+        update.message.reply_text(f"Simulated swap executed for {token_symbol} {amount} SOL.\nResult: {result['status']}", parse_mode=ParseMode.HTML)
+    except Exception as e:
+        update.message.reply_text(f"Error processing swap: {e}", parse_mode=ParseMode.HTML)
 
 def panel_command(update: Update, context: CallbackContext) -> None:
     update.message.reply_text(
@@ -168,6 +204,7 @@ def removetoken_command(update: Update, context: CallbackContext) -> None:
 dispatcher.add_handler(CommandHandler("start", start))
 dispatcher.add_handler(CommandHandler("help", help_command))
 dispatcher.add_handler(CommandHandler("gastime", gastime_command))
+dispatcher.add_handler(CommandHandler("autobuy", autobuy_command))
 dispatcher.add_handler(CommandHandler("panel", panel_command))
 dispatcher.add_handler(CommandHandler("max", lambda u, c: u.message.reply_text(get_max_token_stats(), parse_mode=ParseMode.HTML)))
 dispatcher.add_handler(CommandHandler("wallets", wallets_command))
@@ -224,6 +261,7 @@ if __name__ == '__main__':
         BotCommand("start", "Show welcome message and buttons"),
         BotCommand("help", "Show help information"),
         BotCommand("gastime", "Show recent Solana gas fees and timing suggestions"),
+        BotCommand("autobuy", "Simulate or execute token swap"),
         BotCommand("max", "Show MAX token stats"),
         BotCommand("wallets", "List all watched wallets"),
         BotCommand("removewallet", "Remove a wallet by nickname"),
