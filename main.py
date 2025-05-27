@@ -1,32 +1,22 @@
 import logging
 import os
-from telegram import (
-    Update, InlineKeyboardButton, InlineKeyboardMarkup, ParseMode,
-    BotCommand, Bot
-)
-from telegram.ext import (
-    Updater, CommandHandler, CallbackContext,
-    CallbackQueryHandler, Dispatcher
-)
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ParseMode, BotCommand, Bot
+from telegram.ext import Updater, CommandHandler, CallbackContext, CallbackQueryHandler, Dispatcher
 from flask import Flask, request
 from apscheduler.schedulers.background import BackgroundScheduler
 import pytz
 
 from utils import (
-    get_max_token_stats, get_trending_coins, get_new_tokens,
-    get_suspicious_activity_alerts, get_wallet_summary,
-    get_full_daily_report, HELP_TEXT, simulate_debug_output,
-    get_pnl_report, get_sentiment_scores, get_trade_prompt,
-    get_narrative_classification
+    get_max_token_stats, get_trending_coins, get_new_tokens, get_suspicious_activity_alerts,
+    get_wallet_summary, get_full_daily_report, HELP_TEXT, simulate_debug_output,
+    get_pnl_report, get_sentiment_scores, get_trade_prompt, get_narrative_classification
 )
-from db import (
-    init_db, add_wallet, get_wallets, add_token,
-    get_tokens, remove_token
-)
+from db import init_db, add_wallet, get_wallets, add_token, get_tokens, remove_token
 from price_alerts import check_price_targets
 from stealth_launch import scan_new_tokens
-from mirror_watch import monitor_wallets
+from mirror_watch import check_mirror_wallets  # Corrected import here
 from botnet import check_botnet_activity
+from wallet import Wallet
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -38,54 +28,33 @@ app = Flask(__name__)
 updater = Updater(token=TOKEN, use_context=True)
 dispatcher: Dispatcher = updater.dispatcher
 
-# --- Main Keyboard with descriptions --- #
 def get_main_keyboard():
     return InlineKeyboardMarkup([
-        [
-            InlineKeyboardButton("💰 MAX", callback_data='max'),
-            InlineKeyboardButton("👛 Wallets", callback_data='wallets')
-        ],
-        [
-            InlineKeyboardButton("📈 Trending", callback_data='trending'),
-            InlineKeyboardButton("🆕 New Tokens", callback_data='new')
-        ],
-        [
-            InlineKeyboardButton("🚨 Alerts", callback_data='alerts'),
-            InlineKeyboardButton("📊 PnL", callback_data='pnl')
-        ],
-        [
-            InlineKeyboardButton("🧠 Meme Sentiment", callback_data='sentiment'),
-            InlineKeyboardButton("🤖 Trade Prompt", callback_data='tradeprompt')
-        ],
-        [
-            InlineKeyboardButton("🔠 Meme Classification", callback_data='classify')
-        ],
-        [
-            InlineKeyboardButton("➕ Add Wallet", switch_inline_query_current_chat='/watch '),
-            InlineKeyboardButton("➕ Add Token", switch_inline_query_current_chat='/addtoken $')
-        ],
-        [
-            InlineKeyboardButton("📋 View Tokens", switch_inline_query_current_chat='/tokens'),
-            InlineKeyboardButton("➖ Remove Token", switch_inline_query_current_chat='/removetoken $')
-        ],
-        [
-            InlineKeyboardButton("⚙️ Help", callback_data='help')
-        ]
+        [InlineKeyboardButton("💰 MAX", callback_data='max'),
+         InlineKeyboardButton("👛 Wallets", callback_data='wallets')],
+        [InlineKeyboardButton("📈 Trending", callback_data='trending'),
+         InlineKeyboardButton("🆕 New", callback_data='new')],
+        [InlineKeyboardButton("🚨 Alerts", callback_data='alerts'),
+         InlineKeyboardButton("📊 PnL", callback_data='pnl')],
+        [InlineKeyboardButton("🧠 Meme Sentiment", callback_data='sentiment'),
+         InlineKeyboardButton("🤖 Trade Prompt", callback_data='tradeprompt')],
+        [InlineKeyboardButton("🔠 Meme Classification", callback_data='classify')],
+        [InlineKeyboardButton("➕ Add Wallet", switch_inline_query_current_chat='/watch '),
+         InlineKeyboardButton("➕ Add Token", switch_inline_query_current_chat='/addtoken $')],
+        [InlineKeyboardButton("📋 View Tokens", switch_inline_query_current_chat='/tokens')]
     ])
-
-# --- Command Handlers --- #
 
 def start(update: Update, context: CallbackContext) -> None:
     update.message.reply_text(
         """<b>👋 Welcome to SolMadSpecBot!</b>
 
-Use buttons below or commands:
-/max, /wallets, /trending, /new, /alerts, /pnl
-/sentiment, /tradeprompt, /classify
-/watch &lt;wallet&gt; [nickname], /addtoken $TOKEN
-/removetoken $TOKEN, /tokens, /help
+Use the buttons below or type:
+/max /wallets /trending  
+/new /alerts /debug  
+/pnl /sentiment /tradeprompt /classify  
+/watch &lt;wallet&gt; /addtoken $TOKEN /tokens
 
-Daily updates at 9AM Bangkok time (GMT+7).""",
+Daily updates sent at 9AM Bangkok time (GMT+7).""",
         reply_markup=get_main_keyboard(),
         parse_mode=ParseMode.HTML
     )
@@ -111,8 +80,7 @@ def handle_callback(update: Update, context: CallbackContext) -> None:
         'pnl': get_pnl_report,
         'sentiment': get_sentiment_scores,
         'tradeprompt': get_trade_prompt,
-        'classify': get_narrative_classification,
-        'help': lambda: HELP_TEXT
+        'classify': get_narrative_classification
     }
 
     result = func_map.get(command, lambda: "Unknown command")()
@@ -120,64 +88,57 @@ def handle_callback(update: Update, context: CallbackContext) -> None:
 
 def watch_command(update: Update, context: CallbackContext) -> None:
     if len(context.args) < 1:
-        update.message.reply_text("Usage: /watch <wallet_address> [nickname]", parse_mode=ParseMode.HTML)
+        update.message.reply_text("Usage: /watch <wallet_address> [nickname]")
         return
     address = context.args[0]
     label = " ".join(context.args[1:]) if len(context.args) > 1 else f"Wallet {address[:4]}...{address[-4:]}"
     try:
         add_wallet(label, address)
         update.message.reply_text(f"✅ Watching wallet:\n<code>{address}</code>\nNickname: {label}", parse_mode=ParseMode.HTML)
-    except Exception as e:
-        logger.error(f"Error adding wallet: {e}")
-        update.message.reply_text("⚠️ Error adding wallet.", parse_mode=ParseMode.HTML)
+    except Exception:
+        update.message.reply_text("⚠️ Error adding wallet.")
 
 def wallets_command(update: Update, context: CallbackContext) -> None:
     wallets = get_wallets()
     if not wallets:
-        update.message.reply_text("No wallets being tracked.", parse_mode=ParseMode.HTML)
+        update.message.reply_text("No wallets being tracked.")
         return
     msg = "<b>👛 Watched Wallets</b>\n" + "\n".join([f"• {label}\n<code>{addr}</code>" for label, addr in wallets])
     update.message.reply_text(msg, parse_mode=ParseMode.HTML)
 
 def addtoken_command(update: Update, context: CallbackContext) -> None:
     if len(context.args) != 1:
-        update.message.reply_text("Usage: /addtoken $TOKEN", parse_mode=ParseMode.HTML)
+        update.message.reply_text("Usage: /addtoken $TOKEN")
         return
     symbol = context.args[0].lstrip("$")
     try:
         add_token(symbol)
-        update.message.reply_text(f"✅ Watching token: ${symbol.upper()}", parse_mode=ParseMode.HTML)
-    except Exception as e:
-        logger.error(f"Error adding token: {e}")
-        update.message.reply_text("⚠️ Error adding token.", parse_mode=ParseMode.HTML)
+        update.message.reply_text(f"✅ Watching token: ${symbol.upper()}")
+    except Exception:
+        update.message.reply_text("⚠️ Error adding token.")
 
 def tokens_command(update: Update, context: CallbackContext) -> None:
     tokens = get_tokens()
     if not tokens:
-        update.message.reply_text("No tokens being watched.", parse_mode=ParseMode.HTML)
+        update.message.reply_text("No tokens being watched.")
         return
     token_list = "\n".join([f"• ${t}" for t in tokens])
     update.message.reply_text(f"<b>📋 Watched Tokens</b>\n{token_list}", parse_mode=ParseMode.HTML)
 
 def removetoken_command(update: Update, context: CallbackContext) -> None:
     if len(context.args) != 1:
-        update.message.reply_text("Usage: /removetoken $TOKEN", parse_mode=ParseMode.HTML)
+        update.message.reply_text("Usage: /removetoken $TOKEN")
         return
     symbol = context.args[0].lstrip("$")
     try:
-        removed = remove_token(symbol)
-        if removed:
-            update.message.reply_text(f"✅ Removed token: ${symbol.upper()}", parse_mode=ParseMode.HTML)
-        else:
-            update.message.reply_text(f"Token ${symbol.upper()} not found.", parse_mode=ParseMode.HTML)
-    except Exception as e:
-        logger.error(f"Error removing token: {e}")
-        update.message.reply_text("⚠️ Error removing token.", parse_mode=ParseMode.HTML)
+        remove_token(symbol)
+        update.message.reply_text(f"✅ Removed token: ${symbol.upper()}")
+    except Exception:
+        update.message.reply_text("⚠️ Error removing token.")
 
 def debug_command(update: Update, context: CallbackContext) -> None:
     update.message.reply_text(simulate_debug_output(), parse_mode=ParseMode.HTML)
 
-# Register handlers
 dispatcher.add_handler(CommandHandler("start", start))
 dispatcher.add_handler(CommandHandler("panel", panel_command))
 dispatcher.add_handler(CommandHandler("max", lambda u, c: u.message.reply_text(get_max_token_stats(), parse_mode=ParseMode.HTML)))
@@ -197,26 +158,25 @@ dispatcher.add_handler(CommandHandler("classify", lambda u, c: u.message.reply_t
 
 dispatcher.add_handler(CallbackQueryHandler(handle_callback))
 
-# Scheduler jobs
 scheduler = BackgroundScheduler(timezone=pytz.timezone("Asia/Bangkok"))
+
 jobs = [
     {"func": lambda: scan_new_tokens(updater.bot), "trigger": "interval", "minutes": 5},
     {"func": lambda: check_price_targets(updater.bot), "trigger": "interval", "minutes": 10},
-    {"func": lambda: monitor_wallets(updater.bot), "trigger": "interval", "minutes": 10},
+    {"func": lambda: check_mirror_wallets(updater.bot), "trigger": "interval", "minutes": 10},
     {"func": lambda: check_botnet_activity(updater.bot), "trigger": "interval", "minutes": 10},
     {"func": lambda: send_daily_report(updater.bot), "trigger": "cron", "hour": 9, "minute": 0}
 ]
+
 for job in jobs:
     scheduler.add_job(job["func"], job["trigger"], **{k: v for k, v in job.items() if k not in ["func", "trigger"]})
 scheduler.start()
 
-# Daily report
 def send_daily_report(bot: Bot):
     chat_id = os.getenv("CHAT_ID")
     report = get_full_daily_report()
     bot.send_message(chat_id=chat_id, text=report, parse_mode=ParseMode.HTML)
 
-# Flask webhook setup
 @app.route('/')
 def index():
     return "SolMadSpecBot is running."
@@ -227,7 +187,6 @@ def webhook():
     dispatcher.process_update(update)
     return 'ok'
 
-# Run app
 if __name__ == '__main__':
     init_db()
     updater.bot.set_my_commands([
