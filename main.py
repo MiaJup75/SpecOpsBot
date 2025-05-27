@@ -10,6 +10,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from flask import Flask, request
 import os
 
+# Enable logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -20,34 +21,46 @@ app = Flask(__name__)
 updater = Updater(token=TOKEN, use_context=True)
 dispatcher: Dispatcher = updater.dispatcher
 
-# --- Command Handlers --- #
+# --- Inline Keyboard Layout --- #
 
-def start(update: Update, context: CallbackContext) -> None:
-    keyboard = [
+def get_main_keyboard():
+    return InlineKeyboardMarkup([
         [InlineKeyboardButton("💰 MAX", callback_data='max'),
          InlineKeyboardButton("👛 Wallets", callback_data='wallets')],
         [InlineKeyboardButton("📈 Trending", callback_data='trending'),
          InlineKeyboardButton("🆕 New", callback_data='new')],
         [InlineKeyboardButton("🚨 Alerts", callback_data='alerts'),
          InlineKeyboardButton("🧪 Debug", callback_data='debug')]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    welcome_message = """
-<b>👋 Welcome to SolMadSpecBot!</b>
+    ])
+
+# --- Command Handlers --- #
+
+def start(update: Update, context: CallbackContext) -> None:
+    update.message.reply_text(
+        """<b>👋 Welcome to SolMadSpecBot!</b>
 
 Use the buttons below or type:
 /max /wallets /trending  
 /new /alerts /debug  
 /pnl /sentiment /tradeprompt /classify
 
-Daily updates sent at 9AM Bangkok time.
-"""
-    update.message.reply_text(welcome_message, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
+Daily updates sent at 9AM Bangkok time.""",
+        reply_markup=get_main_keyboard(),
+        parse_mode=ParseMode.HTML
+    )
+
+def panel_command(update: Update, context: CallbackContext) -> None:
+    update.message.reply_text(
+        "🔘 <b>SolMadSpecBot Panel</b>\nTap a button below:",
+        reply_markup=get_main_keyboard(),
+        parse_mode=ParseMode.HTML
+    )
 
 def handle_callback(update: Update, context: CallbackContext) -> None:
     query = update.callback_query
     query.answer()
     command = query.data
+
     func_map = {
         'max': get_max_token_stats,
         'wallets': get_wallet_summary,
@@ -56,11 +69,14 @@ def handle_callback(update: Update, context: CallbackContext) -> None:
         'alerts': get_suspicious_activity_alerts,
         'debug': simulate_debug_output
     }
-    response = func_map.get(command, lambda: "Unknown command")()
-    query.edit_message_text(response, parse_mode=ParseMode.HTML)
 
-# Standard command bindings
+    result = func_map.get(command, lambda: "Unknown command")()
+    context.bot.send_message(chat_id=query.message.chat.id, text=result, parse_mode=ParseMode.HTML)
+
+# --- Register Handlers --- #
+
 dispatcher.add_handler(CommandHandler("start", start))
+dispatcher.add_handler(CommandHandler("panel", panel_command))
 dispatcher.add_handler(CommandHandler("max", lambda u, c: u.message.reply_text(get_max_token_stats(), parse_mode=ParseMode.HTML)))
 dispatcher.add_handler(CommandHandler("wallets", lambda u, c: u.message.reply_text(get_wallet_summary(), parse_mode=ParseMode.HTML)))
 dispatcher.add_handler(CommandHandler("trending", lambda u, c: u.message.reply_text(get_trending_coins(), parse_mode=ParseMode.HTML)))
@@ -71,10 +87,11 @@ dispatcher.add_handler(CommandHandler("pnl", lambda u, c: u.message.reply_text(g
 dispatcher.add_handler(CommandHandler("sentiment", lambda u, c: u.message.reply_text(get_sentiment_scores(), parse_mode=ParseMode.HTML)))
 dispatcher.add_handler(CommandHandler("tradeprompt", lambda u, c: u.message.reply_text(get_trade_prompt(), parse_mode=ParseMode.HTML)))
 dispatcher.add_handler(CommandHandler("classify", lambda u, c: u.message.reply_text(get_narrative_classification(), parse_mode=ParseMode.HTML)))
-dispatcher.add_handler(CallbackQueryHandler(handle_callback))
 dispatcher.add_handler(CommandHandler("help", lambda u, c: u.message.reply_text(HELP_TEXT, parse_mode=ParseMode.HTML)))
+dispatcher.add_handler(CallbackQueryHandler(handle_callback))
 
-# Daily report scheduler
+# --- Scheduler Job --- #
+
 def send_daily_report(bot):
     chat_id = os.getenv("CHAT_ID")
     report = get_full_daily_report()
@@ -83,6 +100,8 @@ def send_daily_report(bot):
 scheduler = BackgroundScheduler()
 scheduler.add_job(lambda: send_daily_report(dispatcher.bot), 'cron', hour=9, minute=0, timezone='Asia/Bangkok')
 scheduler.start()
+
+# --- Webhook Setup --- #
 
 @app.route('/')
 def index():
