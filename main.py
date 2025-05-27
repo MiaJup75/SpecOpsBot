@@ -3,13 +3,13 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ParseMo
 from telegram.ext import Updater, CommandHandler, CallbackContext, CallbackQueryHandler, Dispatcher
 from utils import (
     get_max_token_stats, get_trending_coins, get_new_tokens, get_suspicious_activity_alerts,
-    get_wallet_summary, get_full_daily_report, HELP_TEXT, simulate_debug_output
+    get_wallet_summary, get_full_daily_report, HELP_TEXT, simulate_debug_output,
+    get_pnl_report, get_sentiment_scores, get_trade_prompt, get_narrative_classification
 )
 from apscheduler.schedulers.background import BackgroundScheduler
 from flask import Flask, request
 import os
 
-# Enable logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -35,13 +35,10 @@ def start(update: Update, context: CallbackContext) -> None:
     welcome_message = """
 <b>👋 Welcome to SolMadSpecBot!</b>
 
-Use the buttons below or type a command:
-/max – MAX token stats  
-/wallets – Watchlist activity  
-/trending – Top meme coins  
-/new – New token launches  
-/alerts – Suspicious activity  
-/debug – Simulated data
+Use the buttons below or type:
+/max /wallets /trending  
+/new /alerts /debug  
+/pnl /sentiment /tradeprompt /classify
 
 Daily updates sent at 9AM Bangkok time.
 """
@@ -51,67 +48,41 @@ def handle_callback(update: Update, context: CallbackContext) -> None:
     query = update.callback_query
     query.answer()
     command = query.data
+    func_map = {
+        'max': get_max_token_stats,
+        'wallets': get_wallet_summary,
+        'trending': get_trending_coins,
+        'new': get_new_tokens,
+        'alerts': get_suspicious_activity_alerts,
+        'debug': simulate_debug_output
+    }
+    response = func_map.get(command, lambda: "Unknown command")()
+    query.edit_message_text(response, parse_mode=ParseMode.HTML)
 
-    if command == 'max':
-        query.edit_message_text(get_max_token_stats(), parse_mode=ParseMode.HTML)
-    elif command == 'wallets':
-        query.edit_message_text(get_wallet_summary(), parse_mode=ParseMode.HTML)
-    elif command == 'trending':
-        query.edit_message_text(get_trending_coins(), parse_mode=ParseMode.HTML)
-    elif command == 'new':
-        query.edit_message_text(get_new_tokens(), parse_mode=ParseMode.HTML)
-    elif command == 'alerts':
-        query.edit_message_text(get_suspicious_activity_alerts(), parse_mode=ParseMode.HTML)
-    elif command == 'debug':
-        query.edit_message_text(simulate_debug_output(), parse_mode=ParseMode.HTML)
+# Standard command bindings
+dispatcher.add_handler(CommandHandler("start", start))
+dispatcher.add_handler(CommandHandler("max", lambda u, c: u.message.reply_text(get_max_token_stats(), parse_mode=ParseMode.HTML)))
+dispatcher.add_handler(CommandHandler("wallets", lambda u, c: u.message.reply_text(get_wallet_summary(), parse_mode=ParseMode.HTML)))
+dispatcher.add_handler(CommandHandler("trending", lambda u, c: u.message.reply_text(get_trending_coins(), parse_mode=ParseMode.HTML)))
+dispatcher.add_handler(CommandHandler("new", lambda u, c: u.message.reply_text(get_new_tokens(), parse_mode=ParseMode.HTML)))
+dispatcher.add_handler(CommandHandler("alerts", lambda u, c: u.message.reply_text(get_suspicious_activity_alerts(), parse_mode=ParseMode.HTML)))
+dispatcher.add_handler(CommandHandler("debug", lambda u, c: u.message.reply_text(simulate_debug_output(), parse_mode=ParseMode.HTML)))
+dispatcher.add_handler(CommandHandler("pnl", lambda u, c: u.message.reply_text(get_pnl_report(), parse_mode=ParseMode.HTML)))
+dispatcher.add_handler(CommandHandler("sentiment", lambda u, c: u.message.reply_text(get_sentiment_scores(), parse_mode=ParseMode.HTML)))
+dispatcher.add_handler(CommandHandler("tradeprompt", lambda u, c: u.message.reply_text(get_trade_prompt(), parse_mode=ParseMode.HTML)))
+dispatcher.add_handler(CommandHandler("classify", lambda u, c: u.message.reply_text(get_narrative_classification(), parse_mode=ParseMode.HTML)))
+dispatcher.add_handler(CallbackQueryHandler(handle_callback))
+dispatcher.add_handler(CommandHandler("help", lambda u, c: u.message.reply_text(HELP_TEXT, parse_mode=ParseMode.HTML)))
 
-def max_command(update: Update, context: CallbackContext) -> None:
-    update.message.reply_text(get_max_token_stats(), parse_mode=ParseMode.HTML)
-
-def wallets_command(update: Update, context: CallbackContext) -> None:
-    update.message.reply_text(get_wallet_summary(), parse_mode=ParseMode.HTML)
-
-def trending_command(update: Update, context: CallbackContext) -> None:
-    update.message.reply_text(get_trending_coins(), parse_mode=ParseMode.HTML)
-
-def new_command(update: Update, context: CallbackContext) -> None:
-    update.message.reply_text(get_new_tokens(), parse_mode=ParseMode.HTML)
-
-def alerts_command(update: Update, context: CallbackContext) -> None:
-    update.message.reply_text(get_suspicious_activity_alerts(), parse_mode=ParseMode.HTML)
-
-def debug_command(update: Update, context: CallbackContext) -> None:
-    update.message.reply_text(simulate_debug_output(), parse_mode=ParseMode.HTML)
-
-def help_command(update: Update, context: CallbackContext) -> None:
-    update.message.reply_text(HELP_TEXT, parse_mode=ParseMode.HTML)
-
-# --- Scheduler Job --- #
-
+# Daily report scheduler
 def send_daily_report(bot):
     chat_id = os.getenv("CHAT_ID")
     report = get_full_daily_report()
     bot.send_message(chat_id=chat_id, text=report, parse_mode=ParseMode.HTML)
 
-# --- Register Handlers --- #
-
-dispatcher.add_handler(CommandHandler("start", start))
-dispatcher.add_handler(CommandHandler("max", max_command))
-dispatcher.add_handler(CommandHandler("wallets", wallets_command))
-dispatcher.add_handler(CommandHandler("trending", trending_command))
-dispatcher.add_handler(CommandHandler("new", new_command))
-dispatcher.add_handler(CommandHandler("alerts", alerts_command))
-dispatcher.add_handler(CommandHandler("debug", debug_command))
-dispatcher.add_handler(CommandHandler("help", help_command))
-dispatcher.add_handler(CallbackQueryHandler(handle_callback))
-
-# --- Scheduler Setup --- #
-
 scheduler = BackgroundScheduler()
 scheduler.add_job(lambda: send_daily_report(dispatcher.bot), 'cron', hour=9, minute=0, timezone='Asia/Bangkok')
 scheduler.start()
-
-# --- Webhook Setup --- #
 
 @app.route('/')
 def index():
