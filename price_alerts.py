@@ -1,8 +1,8 @@
 import os
 import requests
-from db import get_tokens  # Import your token tracking list function
+from db import get_tokens
 from telegram import Bot
-from token_config import get_token_config  # Your token config getter
+from token_config import get_token_config
 
 def fetch_price(pair):
     url = f"https://api.dexscreener.com/latest/dex/pairs/solana/{pair}"
