@@ -13,13 +13,13 @@ def fetch_wallet_activity(address):
         print(f"[MirrorWatch] Error fetching wallet {address}: {e}")
         return []
 
-def monitor_wallets(bot: Bot):
+def check_mirror_wallets(bot: Bot):
     wallets = get_wallets()
     chat_id = os.getenv("CHAT_ID")
 
     for label, address in wallets:
         activity = fetch_wallet_activity(address)
-        # Here implement logic to detect new buys/sells or interesting activity
-        # For MVP, we just notify about wallet checked (replace with real logic)
+        # Placeholder: here you can implement logic to detect new buys/sells or interesting activity
+        # For now, just notify that the wallet was checked
         msg = f"🔍 Checked wallet '{label}' ({address[:6]}...{address[-6:]}) - Recent activity found."
         bot.send_message(chat_id=chat_id, text=msg)
