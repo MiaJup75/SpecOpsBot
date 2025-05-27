@@ -15,7 +15,6 @@ from utils import (
 )
 from db import init_db, add_wallet, get_wallets, add_token, get_tokens, remove_wallet, remove_token
 
-# Import new Tier 3 & 4 modules
 from stealth_radar import scan_stealth_launches
 from price_alerts import check_price_alerts
 from botnet import detect_botnet_activity
@@ -43,10 +42,15 @@ def get_main_keyboard():
          InlineKeyboardButton("🆕 New", callback_data='new')],
         [InlineKeyboardButton("🚨 Alerts", callback_data='alerts'),
          InlineKeyboardButton("📊 PnL", callback_data='pnl')],
-        [InlineKeyboardButton("🔍 Sentiment", callback_data='sentiment'),
+        [InlineKeyboardButton("🔍 Meme Sentiment", callback_data='sentiment'),
          InlineKeyboardButton("🤖 AI Trade", callback_data='tradeprompt')],
         [InlineKeyboardButton("📦 Meme Classification", callback_data='classify'),
          InlineKeyboardButton("🐞 Debug", callback_data='debug')],
+        [InlineKeyboardButton("🚨 Stealth Radar", callback_data='stealth')],
+        [InlineKeyboardButton("🔔 Price Alerts", callback_data='pricealerts')],
+        [InlineKeyboardButton("🤖 Botnet Detect", callback_data='botnet')],
+        [InlineKeyboardButton("🔄 Mirror Trades", callback_data='mirror')],
+        [InlineKeyboardButton("👥 Friend Wallets", callback_data='friendwallets')],
         [InlineKeyboardButton("➕ Add Wallet", switch_inline_query_current_chat='/watch '),
          InlineKeyboardButton("➖ Remove Wallet", switch_inline_query_current_chat='/removewallet ')],
         [InlineKeyboardButton("➕ Add Token", switch_inline_query_current_chat='/addtoken $'),
@@ -65,6 +69,7 @@ Use the buttons below or type:
 /max /wallets /trending  
 /new /alerts /debug  
 /pnl /sentiment /tradeprompt /classify  
+/stealth /pricealerts /botnet /mirror /friendwallets  
 /watch &lt;wallet&gt; /addtoken $TOKEN /tokens
 
 Daily updates sent at 9AM Bangkok time (GMT+7).""",
@@ -97,7 +102,12 @@ def handle_callback(update: Update, context: CallbackContext) -> None:
         'tradeprompt': get_trade_prompt,
         'classify': get_narrative_classification,
         'debug': simulate_debug_output,
-        'panel': lambda: "🔘 Use the commands or buttons to navigate."
+        'panel': lambda: "🔘 Use the commands or buttons to navigate.",
+        'stealth': lambda: "Stealth Launch Radar is running and alerts will be sent automatically.",
+        'pricealerts': lambda: "Price Alerts are active and will notify you of triggers.",
+        'botnet': lambda: "Botnet detection is active and monitoring suspicious activity.",
+        'mirror': lambda: "Mirror trade monitoring is enabled.",
+        'friendwallets': lambda: "Friend wallet sync is active."
     }
 
     func = func_map.get(command)
@@ -111,9 +121,23 @@ def handle_callback(update: Update, context: CallbackContext) -> None:
 
     context.bot.send_message(chat_id=query.message.chat.id, text=text, parse_mode=ParseMode.HTML)
 
-# Watch commands etc - keep existing handlers for /watch, /addtoken, /tokens, etc.
+# --- Missing watch_command implementation to fix the error ---
 
-# Add removewallet handler
+def watch_command(update: Update, context: CallbackContext) -> None:
+    try:
+        if len(context.args) != 1:
+            update.message.reply_text("Usage: /watch <wallet_address>", parse_mode=ParseMode.HTML)
+            return
+        address = context.args[0]
+        label = f"Wallet {address[:4]}...{address[-4:]}"
+        add_wallet(label, address)
+        update.message.reply_text(f"✅ Watching wallet:\n<code>{address}</code>", parse_mode=ParseMode.HTML)
+    except Exception as e:
+        logger.error(f"Error adding wallet: {e}")
+        update.message.reply_text("⚠️ Error adding wallet.")
+
+# Existing handlers for tokens, removals, etc.
+
 def removewallet_command(update: Update, context: CallbackContext) -> None:
     if not context.args:
         update.message.reply_text("Usage: /removewallet <wallet_address>")
@@ -122,7 +146,6 @@ def removewallet_command(update: Update, context: CallbackContext) -> None:
     remove_wallet(address)
     update.message.reply_text(f"🗑️ Removed wallet:\n<code>{address}</code>", parse_mode=ParseMode.HTML)
 
-# Add removetoken handler
 def removetoken_command(update: Update, context: CallbackContext) -> None:
     if not context.args:
         update.message.reply_text("Usage: /removetoken $TOKEN")
@@ -131,11 +154,39 @@ def removetoken_command(update: Update, context: CallbackContext) -> None:
     remove_token(symbol)
     update.message.reply_text(f"🗑️ Removed token: ${symbol.upper()}")
 
-# Register all handlers
+def addtoken_command(update: Update, context: CallbackContext) -> None:
+    try:
+        if len(context.args) != 1:
+            update.message.reply_text("Usage: /addtoken $TOKEN")
+            return
+        symbol = context.args[0].lstrip("$")
+        add_token(symbol)
+        update.message.reply_text(f"✅ Watching token: ${symbol.upper()}")
+    except Exception:
+        update.message.reply_text("⚠️ Error adding token.")
+
+def tokens_command(update: Update, context: CallbackContext) -> None:
+    tokens = get_tokens()
+    if not tokens:
+        update.message.reply_text("No tokens being watched.")
+        return
+    token_list = "\n".join([f"• ${t}" for t in tokens])
+    update.message.reply_text(f"<b>📋 Watched Tokens</b>\n{token_list}", parse_mode=ParseMode.HTML)
+
+def wallets_command(update: Update, context: CallbackContext) -> None:
+    wallets = get_wallets()
+    if not wallets:
+        update.message.reply_text("No wallets being tracked.")
+        return
+    msg = "<b>👛 Watched Wallets</b>\n" + "\n".join([f"• {label}\n<code>{addr}</code>" for label, addr in wallets])
+    update.message.reply_text(msg, parse_mode=ParseMode.HTML)
+
+# Register command handlers
+
 dispatcher.add_handler(CommandHandler("start", start))
 dispatcher.add_handler(CommandHandler("panel", panel_command))
 dispatcher.add_handler(CommandHandler("max", lambda u, c: u.message.reply_text(get_max_token_stats(), parse_mode=ParseMode.HTML)))
-dispatcher.add_handler(CommandHandler("wallets", lambda u, c: u.message.reply_text(get_wallet_summary(), parse_mode=ParseMode.HTML)))
+dispatcher.add_handler(CommandHandler("wallets", wallets_command))
 dispatcher.add_handler(CommandHandler("watch", watch_command))
 dispatcher.add_handler(CommandHandler("removewallet", removewallet_command))
 dispatcher.add_handler(CommandHandler("addtoken", addtoken_command))
@@ -151,7 +202,8 @@ dispatcher.add_handler(CommandHandler("tradeprompt", lambda u, c: u.message.repl
 dispatcher.add_handler(CommandHandler("classify", lambda u, c: u.message.reply_text(get_narrative_classification(), parse_mode=ParseMode.HTML)))
 dispatcher.add_handler(CallbackQueryHandler(handle_callback))
 
-# --- Scheduler Job --- #
+# Scheduler jobs
+
 def send_daily_report(bot):
     chat_id = os.getenv("CHAT_ID")
     report = get_full_daily_report()
@@ -166,7 +218,8 @@ scheduler.add_job(lambda: check_mirror_trades(dispatcher.bot), 'interval', minut
 scheduler.add_job(lambda: sync_friend_wallets(dispatcher.bot), 'interval', minutes=10)
 scheduler.start()
 
-# --- Webhook Setup --- #
+# Webhook routes
+
 @app.route('/')
 def index():
     return "SolMadSpecBot is running."
@@ -177,7 +230,8 @@ def webhook():
     dispatcher.process_update(update)
     return 'ok'
 
-# --- Run App --- #
+# Main app run
+
 if __name__ == '__main__':
     init_db()
     updater.bot.set_my_commands([
@@ -198,6 +252,11 @@ if __name__ == '__main__':
         BotCommand("tradeprompt", "AI-generated trade idea"),
         BotCommand("classify", "Classify token narratives"),
         BotCommand("debug", "Run simulated debug outputs"),
-        BotCommand("panel", "Show control panel")
+        BotCommand("panel", "Show control panel"),
+        BotCommand("stealth", "Stealth launch radar info"),
+        BotCommand("pricealerts", "Price alert notifications"),
+        BotCommand("botnet", "Botnet detection alerts"),
+        BotCommand("mirror", "Mirror trade alerts"),
+        BotCommand("friendwallets", "Friend wallet sync updates")
     ])
     app.run(host='0.0.0.0', port=PORT)
