@@ -1,5 +1,6 @@
 import datetime
 import requests
+from pnl_tracker import fetch_pnl_data
 
 def get_max_token_stats() -> str:
     try:
@@ -138,14 +139,18 @@ Simulated /alerts:
 """
 
 def get_pnl_report() -> str:
-    return """<b>📊 MAX Token PnL Report</b>
+    data = fetch_pnl_data()
+    if not data:
+        return "⚠️ PnL data unavailable."
 
-• Holdings: 10.45M MAX  
-• Average Buy: 0.000028  
-• Current Price: 0.000030  
-• Unrealized PnL: +7.1%  
-• Target Exit: $500K Market Cap  
-• Sell Plan: 2M tokens @ 0.000050
+    return f"""<b>📊 MAX Token PnL Report</b>
+
+• Holdings: {data['holdings']:.2f} MAX  
+• Average Buy: {data['avg_cost']:.6f}  
+• Current Price: {data['current_price']:.6f}  
+• Unrealized PnL: {data['pnl_pct']:+.1f}%  
+• Target Exit: ${data['target_exit']:,} Market Cap  
+• Sell Plan: {data['sell_plan']['amount']:,} tokens @ {data['sell_plan']['price']:.6f}
 
 <i>Last updated: Today</i>
 """
@@ -200,5 +205,3 @@ HELP_TEXT = """<b>🛠 Available Commands:</b>
 /addtoken – Track a token on your list  
 /tokens – Show tracked token list
 """
-
-# Other command helpers (unchanged from previous utils.py) ...
