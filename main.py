@@ -1,15 +1,18 @@
 import logging
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ParseMode
 from telegram.ext import Updater, CommandHandler, CallbackContext, CallbackQueryHandler, Dispatcher
+from flask import Flask, request
+import os
+
 from utils import (
     get_max_token_stats, get_trending_coins, get_new_tokens, get_suspicious_activity_alerts,
     get_wallet_summary, get_full_daily_report, HELP_TEXT, simulate_debug_output,
     get_pnl_report, get_sentiment_scores, get_trade_prompt, get_narrative_classification
 )
+from db import init_db, add_wallet, get_wallets, add_token, get_tokens
 from apscheduler.schedulers.background import BackgroundScheduler
-from flask import Flask, request
-import os
 
+# Logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -20,8 +23,7 @@ app = Flask(__name__)
 updater = Updater(token=TOKEN, use_context=True)
 dispatcher: Dispatcher = updater.dispatcher
 
-# --- Inline Keyboard Layout --- #
-
+# --- Inline Keyboard --- #
 def get_main_keyboard():
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("💰 MAX", callback_data='max'),
@@ -41,7 +43,8 @@ def start(update: Update, context: CallbackContext) -> None:
 Use the buttons below or type:
 /max /wallets /trending  
 /new /alerts /debug  
-/pnl /sentiment /tradeprompt /classify
+/pnl /sentiment /tradeprompt /classify  
+/watch <wallet> /addtoken $TOKEN /tokens
 
 Daily updates sent at 9AM Bangkok time.""",
         reply_markup=get_main_keyboard(),
@@ -72,12 +75,54 @@ def handle_callback(update: Update, context: CallbackContext) -> None:
     result = func_map.get(command, lambda: "Unknown command")()
     context.bot.send_message(chat_id=query.message.chat.id, text=result, parse_mode=ParseMode.HTML)
 
-# --- Register Handlers --- #
+def watch_command(update: Update, context: CallbackContext) -> None:
+    try:
+        if len(context.args) != 1:
+            update.message.reply_text("Usage: /watch <wallet_address>")
+            return
+        address = context.args[0]
+        label = f"Wallet {address[:4]}...{address[-4:]}"
+        add_wallet(label, address)
+        update.message.reply_text(f"✅ Watching wallet:\n<code>{address}</code>", parse_mode=ParseMode.HTML)
+    except Exception:
+        update.message.reply_text("⚠️ Error adding wallet.")
+
+def wallets_command(update: Update, context: CallbackContext) -> None:
+    wallets = get_wallets()
+    if not wallets:
+        update.message.reply_text("No wallets being tracked.")
+        return
+    msg = "<b>👛 Watched Wallets</b>\n" + "\n".join([f"• {label}\n<code>{addr}</code>" for label, addr in wallets])
+    update.message.reply_text(msg, parse_mode=ParseMode.HTML)
+
+def addtoken_command(update: Update, context: CallbackContext) -> None:
+    try:
+        if len(context.args) != 1:
+            update.message.reply_text("Usage: /addtoken $TOKEN")
+            return
+        symbol = context.args[0].lstrip("$")
+        add_token(symbol)
+        update.message.reply_text(f"✅ Watching token: ${symbol.upper()}")
+    except Exception:
+        update.message.reply_text("⚠️ Error adding token.")
+
+def tokens_command(update: Update, context: CallbackContext) -> None:
+    tokens = get_tokens()
+    if not tokens:
+        update.message.reply_text("No tokens being watched.")
+        return
+    token_list = "\n".join([f"• ${t}" for t in tokens])
+    update.message.reply_text(f"<b>📋 Watched Tokens</b>\n{token_list}", parse_mode=ParseMode.HTML)
+
+# --- Register Command Handlers --- #
 
 dispatcher.add_handler(CommandHandler("start", start))
 dispatcher.add_handler(CommandHandler("panel", panel_command))
 dispatcher.add_handler(CommandHandler("max", lambda u, c: u.message.reply_text(get_max_token_stats(), parse_mode=ParseMode.HTML)))
-dispatcher.add_handler(CommandHandler("wallets", lambda u, c: u.message.reply_text(get_wallet_summary(), parse_mode=ParseMode.HTML)))
+dispatcher.add_handler(CommandHandler("wallets", wallets_command))
+dispatcher.add_handler(CommandHandler("watch", watch_command))
+dispatcher.add_handler(CommandHandler("addtoken", addtoken_command))
+dispatcher.add_handler(CommandHandler("tokens", tokens_command))
 dispatcher.add_handler(CommandHandler("trending", lambda u, c: u.message.reply_text(get_trending_coins(), parse_mode=ParseMode.HTML)))
 dispatcher.add_handler(CommandHandler("new", lambda u, c: u.message.reply_text(get_new_tokens(), parse_mode=ParseMode.HTML)))
 dispatcher.add_handler(CommandHandler("alerts", lambda u, c: u.message.reply_text(get_suspicious_activity_alerts(), parse_mode=ParseMode.HTML)))
@@ -112,7 +157,8 @@ def webhook():
     dispatcher.process_update(update)
     return 'ok'
 
-updater.bot.set_webhook(url=f"https://{os.environ['RENDER_EXTERNAL_HOSTNAME']}/{TOKEN}")
+# --- Run App --- #
 
 if __name__ == '__main__':
+    init_db()
     app.run(host='0.0.0.0', port=PORT)
