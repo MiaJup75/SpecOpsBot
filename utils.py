@@ -5,14 +5,13 @@ def get_max_token_stats() -> str:
     try:
         pair_address = "8fipyfvbusjpuv2wwyk8eppnk5f9dgzs8uasputwszdc"
         url = f"https://api.dexscreener.com/latest/dex/pairs/solana/{pair_address}"
-        response = requests.get(url, timeout=5)
-        data = response.json()
+        response = requests.get(url, timeout=5).json()
 
-        if 'pair' not in data:
+        if 'pair' not in response:
             return "⚠️ MAX token data unavailable."
 
-        p = data['pair']
-        price = float(p['priceUsd'])
+        p = response['pair']
+        price = p['priceUsd']
         market_cap = float(p.get('marketCap', 0))
         volume = float(p['volume']['h24'])
         liquidity = float(p['liquidity']['usd'])
@@ -29,17 +28,17 @@ def get_max_token_stats() -> str:
         return f"""
 <b>🐶 MAX Token Update</b>
 
-📈 <b>Price:</b> ${price:.7f}
+📈 <b>Price:</b> ${price}
 💰 <b>Market Cap:</b> ${market_cap:,.0f}
 🌿 <b>Volume (24h):</b> ${volume:,.2f}
 💵 <b>FDV:</b> ${fdv:,.0f}
 📊 <b>Buys:</b> {buys} | <b>Sells:</b> {sells}
 💧 <b>Liquidity:</b> ${liquidity:,.2f}
-🕒 <b>24H Change:</b> {change:+.2f}%
+🕒 <b>24H Change:</b> {change}%
 📅 <b>Launch Date:</b> {launch_date}
 🔗 <a href='{dex_link}'>View on Dexscreener</a>
 """
-    except Exception as e:
+    except Exception:
         return f"⚠️ Unable to fetch MAX token data."
 
 def get_trending_coins() -> str:
@@ -110,15 +109,15 @@ def get_full_daily_report() -> str:
 • Trojan: 1 buy  
 • MAX: 115K sold
 
-🧠 <b>Meme Sentiment Score</b>  
+🧠 <b>Sentiment</b>  
 $DUBI – 8.7/10  
 $ZAP – 6.1/10  
 $FAKE – 2.8/10
 
-🤖 <b>AI Trade Prompt</b>  
+🤖 <b>Trade Prompt</b>  
 Watch $DUBI < $0.000021
 
-🔠 <b>Meme Classification</b>  
+🔠 <b>Narratives</b>  
 $DUBI – Dubai  
 $ZAP – AI  
 $FAKE – None
@@ -151,7 +150,7 @@ def get_pnl_report() -> str:
 """
 
 def get_sentiment_scores() -> str:
-    return """<b>🧠 Meme Sentiment Score</b>
+    return """<b>🧠 Meme Sentiment Scores</b>
 
 • $DUBI – 8.7/10 😍  
 • $ZAP – 6.1/10 😐  
@@ -174,7 +173,7 @@ Risk Level: Medium
 """
 
 def get_narrative_classification() -> str:
-    return """<b>🔠 Meme Classification</b>
+    return """<b>🔠 Narrative Classifications</b>
 
 • $ZAZA – Dubai / Wealth  
 • $CHAD – Masculinity / Gym / Hustle  
@@ -193,12 +192,12 @@ HELP_TEXT = """<b>🛠 Available Commands:</b>
 /alerts – Whale/dev/LP risk alerts  
 /debug – Simulated output for testing  
 /pnl – Show MAX token break-even stats  
-/sentiment – Meme sentiment scores  
-/tradeprompt – Smart trade suggestion  
-/classify – Meme classification tags  
+/sentiment – Emoji/meme score for trending tokens  
+/tradeprompt – Smart suggestion based on wallet activity  
+/classify – Tag token narratives using AI  
 /watch – Add wallet to your watchlist  
-/removewallet – Remove wallet from watchlist  
 /addtoken – Track a token on your list  
-/removetoken – Remove a token from your list  
-/tokens – Show tracked token list
+/tokens – Show tracked token list  
+/autobuy – Auto-buy token command  
+/sync – Sync trending tokens list
 """
