@@ -1,202 +1,158 @@
 import logging
 from flask import Flask, request
 from telegram import Bot, Update, BotCommand
-from telegram.ext import Dispatcher, CommandHandler, CallbackContext
+from telegram.ext import Dispatcher, CommandHandler
 from apscheduler.schedulers.background import BackgroundScheduler
 from utils import (
     fetch_max_token_data,
+    get_trending_coins,
     fetch_new_tokens,
     check_suspicious_activity,
-    fetch_trending_tokens,
-    summarize_wallet_activity,
     track_position,
-    get_pnl,
-    set_target_price,
-    check_target_price,
-    suggest_gas_timing,
-    sentiment_score
+    summarize_wallet_activity,
+    is_allowed
 )
 from config import config
-import pytz
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-TOKEN = config["telegram_token"]
-bot = Bot(token=TOKEN)
+bot = Bot(token=config["telegram_token"])
+dispatcher = Dispatcher(bot=bot, update_queue=None, workers=4, use_context=True)
 
 app = Flask(__name__)
-dp = Dispatcher(bot, None, workers=1, use_context=True)
+scheduler = BackgroundScheduler()
 
-# --- Command Handlers ---
+@app.route("/")
+def index():
+    return "SolMadSpecBot is running!"
 
-def start(update: Update, context: CallbackContext):
-    message = """<b>Welcome to SolMadSpecBot!</b>
-🤖 Your crypto companion on Solana
-
-Available commands:
-/max – MAX Token Stats
-/trending – Top SOL meme coins
-/new – Freshly launched tokens
-/alerts – Suspicious token activity
-/wallets – Top wallet movement
-/track – Track your buy position
-/pnl – Check your token profit/loss
-/settarget – Set a sell alert
-/gas – Best timing to buy/sell
-/sentiment – Meme market mood
-/stealths – Stealth launch radar"""
-    context.bot.send_message(
-        chat_id=update.effective_chat.id,
-        text=message,
-        parse_mode="HTML"
-    )
-
-dp.add_handler(CommandHandler("start", start))
-
-def max(update: Update, context: CallbackContext):
-    message = fetch_max_token_data()
-    context.bot.send_message(
-        chat_id=update.effective_chat.id,
-        text=message,
-        parse_mode="HTML"
-    )
-
-dp.add_handler(CommandHandler("max", max))
-
-def trending(update: Update, context: CallbackContext):
-    message = fetch_trending_tokens()
-    context.bot.send_message(
-        chat_id=update.effective_chat.id,
-        text=message,
-        parse_mode="HTML"
-    )
-
-dp.add_handler(CommandHandler("trending", trending))
-
-def new(update: Update, context: CallbackContext):
-    message = fetch_new_tokens()
-    context.bot.send_message(
-        chat_id=update.effective_chat.id,
-        text=message,
-        parse_mode="HTML"
-    )
-
-dp.add_handler(CommandHandler("new", new))
-
-def alerts(update: Update, context: CallbackContext):
-    message = check_suspicious_activity()
-    context.bot.send_message(
-        chat_id=update.effective_chat.id,
-        text=message,
-        parse_mode="HTML"
-    )
-
-dp.add_handler(CommandHandler("alerts", alerts))
-
-def wallets(update: Update, context: CallbackContext):
-    message = summarize_wallet_activity()
-    context.bot.send_message(
-        chat_id=update.effective_chat.id,
-        text=message,
-        parse_mode="HTML"
-    )
-
-dp.add_handler(CommandHandler("wallets", wallets))
-
-def track(update: Update, context: CallbackContext):
-    try:
-        token, amount, price = context.args
-        track_position(update.effective_user.id, token.upper(), float(amount), float(price))
-        update.message.reply_text(f"Tracking {amount} {token.upper()} at ${price}")
-    except:
-        update.message.reply_text("Usage: /track [TOKEN] [AMOUNT] [BUY_PRICE]")
-
-dp.add_handler(CommandHandler("track", track))
-
-def pnl(update: Update, context: CallbackContext):
-    try:
-        token, current_price = context.args
-        message = get_pnl(update.effective_user.id, token.upper(), float(current_price))
-        update.message.reply_text(message)
-    except:
-        update.message.reply_text("Usage: /pnl [TOKEN] [CURRENT_PRICE]")
-
-dp.add_handler(CommandHandler("pnl", pnl))
-
-def set_target(update: Update, context: CallbackContext):
-    try:
-        token, price = context.args
-        set_target_price(update.effective_user.id, token.upper(), float(price))
-        update.message.reply_text(f"🎯 Target set for {token.upper()} at ${price}")
-    except:
-        update.message.reply_text("Usage: /settarget [TOKEN] [TARGET_PRICE]")
-
-dp.add_handler(CommandHandler("settarget", set_target))
-
-def gas(update: Update, context: CallbackContext):
-    update.message.reply_text(suggest_gas_timing())
-
-dp.add_handler(CommandHandler("gas", gas))
-
-def sentiment(update: Update, context: CallbackContext):
-    update.message.reply_text(sentiment_score())
-
-dp.add_handler(CommandHandler("sentiment", sentiment))
-
-def stealths(update: Update, context: CallbackContext):
-    update.message.reply_text("🕵️‍♂️ No recent stealth launches detected.\n(Live scanning coming soon.)")
-
-dp.add_handler(CommandHandler("stealths", stealths))
-
-# --- Daily Scheduler ---
-
-def send_daily_report():
-    for user_id in config["whitelist"]:
-        try:
-            bot.send_message(
-                chat_id=user_id,
-                text="<b>📊 Daily Report (placeholder)</b>",
-                parse_mode="HTML"
-            )
-        except Exception as e:
-            logging.error(f"Failed to send daily report to {user_id}: {e}")
-
-scheduler = BackgroundScheduler(timezone=pytz.timezone("Asia/Bangkok"))
-scheduler.add_job(send_daily_report, "cron", hour=9)
-scheduler.start()
-
-# --- Webhook Endpoint ---
-
-@app.route(f"/{TOKEN}", methods=["POST"])
-def webhook():
+@app.route(f"/hook", methods=["POST"])
+def webhook_handler():
     update = Update.de_json(request.get_json(force=True), bot)
-    dp.process_update(update)
+    dispatcher.process_update(update)
     return "ok"
 
-@app.route("/", methods=["GET", "HEAD"])
-def index():
-    return "SolMadSpecBot is live."
+def start(update, context):
+    user_id = update.effective_user.id
+    if not is_allowed(user_id):
+        return
+    welcome = (
+        "<b>Welcome to SolMadSpecBot!</b>\n"
+        "Here’s what I can do:\n\n"
+        "/max – MAX token stats\n"
+        "/trending – Top 5 Sol meme coins\n"
+        "/new – New token launches\n"
+        "/alerts – Suspicious activity\n"
+        "/wallets – Watchlist summaries\n"
+        "/pnl – PnL & break-even\n"
+    )
+    context.bot.send_message(chat_id=update.effective_chat.id, text=welcome, parse_mode="HTML")
 
-# --- Bot Commands for Telegram Menu ---
+def max(update, context):
+    user_id = update.effective_user.id
+    if not is_allowed(user_id):
+        return
+    data = fetch_max_token_data()
+    if data:
+        message = (
+            f"🐶 <b>MAX Token Update</b>\n"
+            f"💰 Price: ${data['price']}\n"
+            f"🏛️ Market Cap: ${data['market_cap']}\n"
+            f"📉 Volume (24h): ${data['volume']}\n"
+            f"🏦 FDV: ${data['fdv']}"
+        )
+    else:
+        message = "Failed to fetch MAX token data."
+    context.bot.send_message(chat_id=update.effective_chat.id, text=message, parse_mode="HTML")
 
+def trending(update, context):
+    coins = get_trending_coins()
+    if not coins:
+        message = "No trending coins found."
+    else:
+        message = "<b>🚀 Trending Solana Meme Coins</b>\n"
+        for i, coin in enumerate(coins, 1):
+            name = coin['baseToken']['symbol']
+            price = coin.get('priceUsd', '?')
+            vol = coin.get('volume', {}).get('h24', '?')
+            message += f"{i}. {name} – ${price} – Vol: ${vol}\n"
+    context.bot.send_message(chat_id=update.effective_chat.id, text=message, parse_mode="HTML")
+
+def new(update, context):
+    tokens = fetch_new_tokens()
+    if not tokens:
+        message = "No new tokens found."
+    else:
+        message = "<b>🆕 New Token Launches</b>\n"
+        for token in tokens:
+            name = token['baseToken']['symbol']
+            price = token.get('priceUsd', '?')
+            vol = token.get('volume', {}).get('h24', '?')
+            timestamp = token.get("pairCreatedAt", 0)
+            message += f"• {name} – ${price} – Vol: ${vol}\n"
+    context.bot.send_message(chat_id=update.effective_chat.id, text=message, parse_mode="HTML")
+
+def alerts(update, context):
+    flags = check_suspicious_activity()
+    if not flags:
+        message = "No suspicious activity detected."
+    else:
+        message = "<b>⚠️ Suspicious Token Alerts</b>\n"
+        for item in flags:
+            message += f"{item['token']}: {item['flag']}\n"
+    context.bot.send_message(chat_id=update.effective_chat.id, text=message, parse_mode="HTML")
+
+def wallets(update, context):
+    wallets = config["wallets"]
+    message = "<b>👛 Wallet Watchlist</b>\n"
+    for wallet in wallets:
+        summary = summarize_wallet_activity(wallet)
+        message += f"{summary}\n\n"
+    context.bot.send_message(chat_id=update.effective_chat.id, text=message.strip(), parse_mode="HTML")
+
+def pnl(update, context):
+    stats = track_position()
+    if stats:
+        message = (
+            f"<b>📈 PnL Tracker</b>\n"
+            f"💵 Value: ${stats['value']}\n"
+            f"🧮 PnL: ${stats['pnl']}\n"
+            f"⚖️ Breakeven Price: ${stats['breakeven']}"
+        )
+    else:
+        message = "Could not calculate PnL."
+    context.bot.send_message(chat_id=update.effective_chat.id, text=message, parse_mode="HTML")
+
+def send_daily_report():
+    try:
+        for uid in config["whitelist"]:
+            bot.send_message(chat_id=uid, text="📊 Daily Report (placeholder)", parse_mode="HTML")
+    except Exception as e:
+        logger.error(f"Error sending daily report: {e}")
+
+dispatcher.add_handler(CommandHandler("start", start))
+dispatcher.add_handler(CommandHandler("max", max))
+dispatcher.add_handler(CommandHandler("trending", trending))
+dispatcher.add_handler(CommandHandler("new", new))
+dispatcher.add_handler(CommandHandler("alerts", alerts))
+dispatcher.add_handler(CommandHandler("wallets", wallets))
+dispatcher.add_handler(CommandHandler("pnl", pnl))
+
+# Set / command suggestions
 bot.set_my_commands([
-    BotCommand("start", "Start the bot"),
-    BotCommand("max", "MAX Token Stats"),
-    BotCommand("trending", "Top SOL meme coins"),
-    BotCommand("new", "New tokens <24h"),
-    BotCommand("alerts", "Suspicious token activity"),
-    BotCommand("wallets", "Wallet Tracker Summary"),
-    BotCommand("track", "Track token buy position"),
-    BotCommand("pnl", "Check your PnL"),
-    BotCommand("settarget", "Set a sell alert"),
-    BotCommand("gas", "Gas-efficient timing"),
-    BotCommand("sentiment", "Meme market sentiment"),
-    BotCommand("stealths", "Stealth launch radar")
+    BotCommand("start", "Start the bot and show help"),
+    BotCommand("max", "MAX token update"),
+    BotCommand("trending", "Top 5 Sol meme coins"),
+    BotCommand("new", "New token launches"),
+    BotCommand("alerts", "Suspicious activity"),
+    BotCommand("wallets", "Tracked wallet activity"),
+    BotCommand("pnl", "PnL and breakeven")
 ])
 
-# --- Run the bot ---
+scheduler.add_job(send_daily_report, "cron", hour=9, timezone="Asia/Bangkok")
+scheduler.start()
 
 if __name__ == "__main__":
-    logging.info("Running SolMadSpecBot...")
+    logger.info("Running SolMadSpecBot...")
     app.run(host="0.0.0.0", port=10000)
