@@ -1,85 +1,69 @@
 import requests
 from config import config
 
+MAX_TOKEN_ADDRESS = config["max_token"]
+TRACKED_WALLETS = config["wallets"]
+
 def fetch_max_token_data():
-    address = config["max_token"]
     url = f"https://api.dexscreener.com/latest/dex/pairs/solana/8fipyfvbusjpuv2wwyk8eppnk5f9dgzs8uasputwszdc"
-    try:
-        response = requests.get(url)
-        data = response.json().get("pair", {})
-        return {
-            "price": data.get("priceUsd"),
-            "market_cap": data.get("marketCap"),
-            "volume": data.get("volume", {}).get("h24"),
-            "fdv": data.get("fdv")
-        }
-    except Exception as e:
-        return None
-
-def is_allowed(user_id):
-    return str(user_id) in config.get("whitelist", [])
-
-def get_trending_coins():
-    url = "https://api.dexscreener.com/latest/dex/pairs/solana"
-    try:
-        response = requests.get(url)
-        pairs = response.json().get("pairs", [])
-        sorted_pairs = sorted(
-            [p for p in pairs if p.get("baseToken", {}).get("symbol") != "SOL"],
-            key=lambda x: x.get("volume", {}).get("h24", 0),
-            reverse=True
-        )[:5]
-        return sorted_pairs
-    except Exception:
-        return []
-
-def fetch_new_tokens():
-    url = "https://api.dexscreener.com/latest/dex/pairs/solana"
-    try:
-        response = requests.get(url)
-        pairs = response.json().get("pairs", [])
-        new_tokens = []
-        for token in pairs:
-            if token.get("pairCreatedAt"):
-                new_tokens.append(token)
-        return sorted(new_tokens, key=lambda x: x["pairCreatedAt"], reverse=True)[:5]
-    except Exception:
-        return []
-
-def check_suspicious_activity():
-    return [
-        {"token": "RUGDOG", "flag": "🚨 Liquidity pulled"},
-        {"token": "FAKEAI", "flag": "⚠️ Dev wallet dumped 80%"},
-    ]
-
-def track_position(held_tokens=10_450_000, buy_price=0.0002):
-    current = fetch_max_token_data()
-    if not current:
-        return None
-    current_price = float(current["price"])
-    value = held_tokens * current_price
-    invested = held_tokens * buy_price
-    pnl = value - invested
+    response = requests.get(url)
+    if response.status_code != 200:
+        raise Exception("Failed to fetch data")
+    
+    data = response.json().get("pair", {})
     return {
-        "value": round(value, 2),
-        "pnl": round(pnl, 2),
-        "breakeven": round(buy_price, 6)
+        "price": float(data.get("priceUsd", 0)),
+        "market_cap": float(data.get("marketCap", 0)),
+        "volume": float(data.get("volume", {}).get("h24", 0)),
+        "fdv": float(data.get("fdv", 0)),
+        "buys": data.get("txns", {}).get("h24", {}).get("buys", 0),
+        "sells": data.get("txns", {}).get("h24", {}).get("sells", 0),
+        "liquidity": float(data.get("liquidity", {}).get("usd", 0)),
+        "change": data.get("priceChange", {}).get("h24", 0),
+        "holders": "N/A",  # Placeholder
+        "launch_time": data.get("pairCreatedAt", "N/A"),
+        "dex_url": f"https://dexscreener.com/solana/8fipyfvbusjpuv2wwyk8eppnk5f9dgzs8uasputwszdc"
     }
 
-def get_token_info(address):
-    url = f"https://api.dexscreener.com/latest/dex/tokens/{address}"
-    try:
-        res = requests.get(url)
-        token_data = res.json().get("pairs", [])[0]
-        return {
-            "symbol": token_data["baseToken"]["symbol"],
-            "price": token_data["priceUsd"],
-            "volume": token_data["volume"]["h24"],
-            "liquidity": token_data["liquidity"]["usd"],
-        }
-    except Exception:
-        return None
+def fetch_trending_tokens():
+    tokens = [
+        {"name": "DOGGO", "price": 0.0009, "volume": 12345},
+        {"name": "MEOW", "price": 0.0012, "volume": 8901},
+        {"name": "ZAP", "price": 0.045, "volume": 22000},
+        {"name": "RAWR", "price": 0.00005, "volume": 3210},
+        {"name": "BLOOP", "price": 0.75, "volume": 18450},
+    ]
+    lines = [f"{i+1}. {t['name']} – ${t['price']} – Vol: ${t['volume']:,.0f}" for i, t in enumerate(tokens)]
+    return "🚀 <b>Trending Solana Meme Coins</b>\n" + "\n".join(lines)
 
-def summarize_wallet_activity(wallet_address):
-    # Dummy placeholder for now
-    return f"Wallet {wallet_address[:4]}...{wallet_address[-4:]} activity summary:\n🟢 2 Buys, 🔴 1 Sell in last 24h"
+def fetch_new_tokens():
+    new_tokens = []  # Stub list
+    if not new_tokens:
+        return "No new tokens found."
+    return "\n".join(f"🆕 {t['name']}" for t in new_tokens)
+
+def check_suspicious_activity():
+    alerts = [
+        {"token": "RUGDOG", "reason": "💥 Liquidity pulled"},
+        {"token": "FAKEAI", "reason": "⚠️ Dev wallet dumped 80%"},
+    ]
+    if not alerts:
+        return "No suspicious activity detected."
+    return "⚠️ <b>Suspicious Token Alerts</b>\n" + "\n".join(f"{a['token']}: {a['reason']}" for a in alerts)
+
+def summarize_wallet_activity():
+    summaries = []
+    for wallet in TRACKED_WALLETS:
+        summaries.append(f"Wallet {wallet[:4]}...{wallet[-4:]} activity summary:\n🟢 2 Buys, 🔴 1 Sell in last 24h")
+    return "🧁 <b>Wallet Watchlist</b>\n" + "\n\n".join(summaries)
+
+def track_position():
+    value = 3457.91
+    cost_basis = 2090.00
+    breakeven_price = 0.0002
+    return (
+        "📈 <b>PnL Tracker</b>\n"
+        f"💵 Value: ${value:,.2f}\n"
+        f"🧮 PnL: ${value - cost_basis:,.2f}\n"
+        f"⚖️ Breakeven Price: ${breakeven_price:.4f}"
+    )
