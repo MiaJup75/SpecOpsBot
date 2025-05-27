@@ -12,7 +12,7 @@ def get_max_token_stats() -> str:
             return "⚠️ MAX token data unavailable."
 
         p = data['pair']
-        price = p['priceUsd']
+        price = float(p['priceUsd'])
         market_cap = float(p.get('marketCap', 0))
         volume = float(p['volume']['h24'])
         liquidity = float(p['liquidity']['usd'])
@@ -29,13 +29,13 @@ def get_max_token_stats() -> str:
         return f"""
 <b>🐶 MAX Token Update</b>
 
-📈 <b>Price:</b> ${price}
+📈 <b>Price:</b> ${price:.7f}
 💰 <b>Market Cap:</b> ${market_cap:,.0f}
 🌿 <b>Volume (24h):</b> ${volume:,.2f}
 💵 <b>FDV:</b> ${fdv:,.0f}
 📊 <b>Buys:</b> {buys} | <b>Sells:</b> {sells}
 💧 <b>Liquidity:</b> ${liquidity:,.2f}
-🕒 <b>24H Change:</b> {change}%
+🕒 <b>24H Change:</b> {change:+.2f}%
 📅 <b>Launch Date:</b> {launch_date}
 🔗 <a href='{dex_link}'>View on Dexscreener</a>
 """
@@ -115,10 +115,10 @@ $DUBI – 8.7/10
 $ZAP – 6.1/10  
 $FAKE – 2.8/10
 
-🤖 <b>Trade Prompt</b>  
+🤖 <b>AI Trade Prompt</b>  
 Watch $DUBI < $0.000021
 
-🗂️ <b>Meme Classification</b>  
+🔠 <b>Meme Classification</b>  
 $DUBI – Dubai  
 $ZAP – AI  
 $FAKE – None
@@ -174,7 +174,7 @@ Risk Level: Medium
 """
 
 def get_narrative_classification() -> str:
-    return """<b>🗂️ Meme Classification</b>
+    return """<b>🔠 Meme Classification</b>
 
 • $ZAZA – Dubai / Wealth  
 • $CHAD – Masculinity / Gym / Hustle  
@@ -193,12 +193,12 @@ HELP_TEXT = """<b>🛠 Available Commands:</b>
 /alerts – Whale/dev/LP risk alerts  
 /debug – Simulated output for testing  
 /pnl – Show MAX token break-even stats  
-/sentiment – Meme Sentiment Score  
-/tradeprompt – Smart suggestion based on wallet activity  
-/classify – Meme Classification  
+/sentiment – Meme sentiment scores  
+/tradeprompt – Smart trade suggestion  
+/classify – Meme classification tags  
 /watch – Add wallet to your watchlist  
-/removewallet – Remove wallet by nickname  
+/removewallet – Remove wallet from watchlist  
 /addtoken – Track a token on your list  
-/removetoken – Remove token from watchlist  
+/removetoken – Remove a token from your list  
 /tokens – Show tracked token list
 """
