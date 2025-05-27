@@ -4,6 +4,7 @@ from telegram.ext import Updater, CommandHandler, CallbackContext, CallbackQuery
 from flask import Flask, request
 import os
 import html
+import threading
 
 from utils import (
     get_max_token_stats, get_trending_coins, get_new_tokens, get_suspicious_activity_alerts,
@@ -11,6 +12,7 @@ from utils import (
     get_pnl_report, get_sentiment_scores, get_trade_prompt, get_narrative_classification
 )
 from db import init_db, add_wallet, get_wallets, add_token, get_tokens, remove_wallet, remove_token
+from wallet import Wallet
 from apscheduler.schedulers.background import BackgroundScheduler
 
 # Logging
@@ -104,7 +106,6 @@ def watch_command(update: Update, context: CallbackContext) -> None:
             update.message.reply_text("Usage: /watch <nickname> <wallet_address>\nExample: /watch MyWallet 4FEj7...", parse_mode=ParseMode.HTML)
             return
         if len(context.args) == 1:
-            # No nickname provided, use address as label
             label = context.args[0][:8]
             address = context.args[0]
         else:
@@ -175,9 +176,23 @@ def autobuy_command(update: Update, context: CallbackContext) -> None:
         update.message.reply_text("Usage: /autobuy $TOKEN [amount]", parse_mode=ParseMode.HTML)
         return
     token = context.args[0].lstrip("$").upper()
-    amount = float(context.args[1]) if len(context.args) > 1 else 0.1  # Default buy amount
-    # Here you would invoke your wallet's autobuy functionality
-    update.message.reply_text(f"🤖 Scheduled Auto Buy for ${token} with amount {amount}", parse_mode=ParseMode.HTML)
+    try:
+        amount = float(context.args[1]) if len(context.args) > 1 else 0.1  # Default buy amount
+    except ValueError:
+        update.message.reply_text("⚠️ Invalid amount. Please enter a number.", parse_mode=ParseMode.HTML)
+        return
+
+    def run_swap():
+        wallet = Wallet()
+        success = wallet.swap_token(token, amount)
+        if success:
+            update.message.reply_text(f"✅ Successfully placed order to buy {amount} {token}", parse_mode=ParseMode.HTML)
+        else:
+            update.message.reply_text(f"❌ Failed to place order for {token}. Please try again later.", parse_mode=ParseMode.HTML)
+
+    # Run swap in a separate thread to avoid blocking
+    threading.Thread(target=run_swap).start()
+    update.message.reply_text(f"🤖 Processing auto-buy order for ${token} amount {amount}...", parse_mode=ParseMode.HTML)
 
 # Register handlers
 dispatcher.add_handler(CommandHandler("start", start))
