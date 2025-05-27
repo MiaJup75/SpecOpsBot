@@ -11,10 +11,13 @@ from utils import (
     get_pnl_report, get_sentiment_scores, get_trade_prompt, get_narrative_classification
 )
 from db import init_db, add_wallet, get_wallets, add_token, get_tokens
-from scanner import scan_new_tokens  # Tier 2
-from stealth_scanner import scan_stealth_tokens  # Tier 3
-from pnl_tracker import check_max_pnl  # Tier 3
-from price_alerts import check_price_triggers  # Tier 3
+from scanner import scan_new_tokens
+from stealth_scanner import scan_stealth_tokens
+from pnl_tracker import check_max_pnl
+from price_alerts import check_price_triggers
+from ai_trade import get_ai_trade_prompt
+from botnet import detect_botnet_activity
+from mirror_watch import check_mirror_trades
 from apscheduler.schedulers.background import BackgroundScheduler
 
 # Logging
@@ -28,7 +31,6 @@ app = Flask(__name__)
 updater = Updater(token=TOKEN, use_context=True)
 dispatcher: Dispatcher = updater.dispatcher
 
-# --- Inline Keyboard --- #
 def get_main_keyboard():
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("💰 MAX", callback_data='max'),
@@ -42,7 +44,6 @@ def get_main_keyboard():
         [InlineKeyboardButton("📋 View Tokens", switch_inline_query_current_chat='/tokens')]
     ])
 
-# --- Command Handlers --- #
 def start(update: Update, context: CallbackContext) -> None:
     update.message.reply_text(
         """<b>👋 Welcome to SolMadSpecBot!</b>
@@ -51,7 +52,7 @@ Use the buttons below or type:
 /max /wallets /trending  
 /new /alerts /debug  
 /pnl /sentiment /tradeprompt /classify  
-/watch &lt;wallet&gt; /addtoken $TOKEN /tokens
+/watch <wallet> /addtoken $TOKEN /tokens
 
 Daily updates sent at 9AM Bangkok time.""",
         reply_markup=get_main_keyboard(),
@@ -59,11 +60,8 @@ Daily updates sent at 9AM Bangkok time.""",
     )
 
 def panel_command(update: Update, context: CallbackContext) -> None:
-    update.message.reply_text(
-        "🔘 <b>SolMadSpecBot Panel</b>\nTap a button below:",
-        reply_markup=get_main_keyboard(),
-        parse_mode=ParseMode.HTML
-    )
+    update.message.reply_text("🔘 <b>SolMadSpecBot Panel</b>\nTap a button below:",
+                              reply_markup=get_main_keyboard(), parse_mode=ParseMode.HTML)
 
 def handle_callback(update: Update, context: CallbackContext) -> None:
     query = update.callback_query
@@ -85,7 +83,7 @@ def handle_callback(update: Update, context: CallbackContext) -> None:
 def watch_command(update: Update, context: CallbackContext) -> None:
     try:
         if len(context.args) != 1:
-            update.message.reply_text("Usage: /watch &lt;wallet_address&gt;", parse_mode=ParseMode.HTML)
+            update.message.reply_text("Usage: /watch <wallet_address>", parse_mode=ParseMode.HTML)
             return
         address = context.args[0]
         label = f"Wallet {address[:4]}...{address[-4:]}"
@@ -121,7 +119,6 @@ def tokens_command(update: Update, context: CallbackContext) -> None:
     token_list = "\n".join([f"• ${t}" for t in tokens])
     update.message.reply_text(f"<b>📋 Watched Tokens</b>\n{token_list}", parse_mode=ParseMode.HTML)
 
-# --- Register Command Handlers --- #
 dispatcher.add_handler(CommandHandler("start", start))
 dispatcher.add_handler(CommandHandler("panel", panel_command))
 dispatcher.add_handler(CommandHandler("max", lambda u, c: u.message.reply_text(get_max_token_stats(), parse_mode=ParseMode.HTML)))
@@ -135,12 +132,11 @@ dispatcher.add_handler(CommandHandler("alerts", lambda u, c: u.message.reply_tex
 dispatcher.add_handler(CommandHandler("debug", lambda u, c: u.message.reply_text(simulate_debug_output(), parse_mode=ParseMode.HTML)))
 dispatcher.add_handler(CommandHandler("pnl", lambda u, c: u.message.reply_text(get_pnl_report(), parse_mode=ParseMode.HTML)))
 dispatcher.add_handler(CommandHandler("sentiment", lambda u, c: u.message.reply_text(get_sentiment_scores(), parse_mode=ParseMode.HTML)))
-dispatcher.add_handler(CommandHandler("tradeprompt", lambda u, c: u.message.reply_text(get_trade_prompt(), parse_mode=ParseMode.HTML)))
+dispatcher.add_handler(CommandHandler("tradeprompt", lambda u, c: get_ai_trade_prompt(c.bot)))
 dispatcher.add_handler(CommandHandler("classify", lambda u, c: u.message.reply_text(get_narrative_classification(), parse_mode=ParseMode.HTML)))
 dispatcher.add_handler(CommandHandler("help", lambda u, c: u.message.reply_text(HELP_TEXT, parse_mode=ParseMode.HTML)))
 dispatcher.add_handler(CallbackQueryHandler(handle_callback))
 
-# --- Scheduler Jobs --- #
 def send_daily_report(bot):
     chat_id = os.getenv("CHAT_ID")
     report = get_full_daily_report()
@@ -148,13 +144,15 @@ def send_daily_report(bot):
 
 scheduler = BackgroundScheduler(timezone=pytz.timezone("Asia/Bangkok"))
 scheduler.add_job(lambda: send_daily_report(dispatcher.bot), 'cron', hour=9, minute=0)
-scheduler.add_job(lambda: scan_new_tokens(dispatcher.bot), 'interval', minutes=5)       # Tier 2
-scheduler.add_job(lambda: scan_stealth_tokens(dispatcher.bot), 'interval', minutes=7)   # Tier 3
-scheduler.add_job(lambda: check_max_pnl(dispatcher.bot), 'interval', minutes=10)        # Tier 3
-scheduler.add_job(lambda: check_price_triggers(dispatcher.bot), 'interval', minutes=7)  # Tier 3
+scheduler.add_job(lambda: scan_new_tokens(dispatcher.bot), 'interval', minutes=5)
+scheduler.add_job(lambda: scan_stealth_tokens(dispatcher.bot), 'interval', minutes=7)
+scheduler.add_job(lambda: check_max_pnl(dispatcher.bot), 'interval', minutes=10)
+scheduler.add_job(lambda: check_price_triggers(dispatcher.bot), 'interval', minutes=7)
+scheduler.add_job(lambda: get_ai_trade_prompt(dispatcher.bot), 'interval', minutes=15)
+scheduler.add_job(lambda: detect_botnet_activity(dispatcher.bot), 'interval', minutes=20)
+scheduler.add_job(lambda: check_mirror_trades(dispatcher.bot), 'interval', minutes=18)
 scheduler.start()
 
-# --- Webhook Setup --- #
 @app.route('/')
 def index():
     return "SolMadSpecBot is running."
@@ -165,7 +163,6 @@ def webhook():
     dispatcher.process_update(update)
     return 'ok'
 
-# --- Run App --- #
 if __name__ == '__main__':
     init_db()
     updater.bot.set_my_commands([
