@@ -1,6 +1,5 @@
 import datetime
 import requests
-from pnl_tracker import fetch_pnl_data
 
 def get_max_token_stats() -> str:
     try:
@@ -111,7 +110,7 @@ def get_full_daily_report() -> str:
 • Trojan: 1 buy  
 • MAX: 115K sold
 
-🧠 <b>Sentiment</b>  
+🧠 <b>Meme Sentiment Score</b>  
 $DUBI – 8.7/10  
 $ZAP – 6.1/10  
 $FAKE – 2.8/10
@@ -119,7 +118,7 @@ $FAKE – 2.8/10
 🤖 <b>Trade Prompt</b>  
 Watch $DUBI < $0.000021
 
-🔠 <b>Narratives</b>  
+🗂️ <b>Meme Classification</b>  
 $DUBI – Dubai  
 $ZAP – AI  
 $FAKE – None
@@ -139,24 +138,20 @@ Simulated /alerts:
 """
 
 def get_pnl_report() -> str:
-    data = fetch_pnl_data()
-    if not data:
-        return "⚠️ PnL data unavailable."
+    return """<b>📊 MAX Token PnL Report</b>
 
-    return f"""<b>📊 MAX Token PnL Report</b>
-
-• Holdings: {data['holdings']:.2f} MAX  
-• Average Buy: {data['avg_cost']:.6f}  
-• Current Price: {data['current_price']:.6f}  
-• Unrealized PnL: {data['pnl_pct']:+.1f}%  
-• Target Exit: ${data['target_exit']:,} Market Cap  
-• Sell Plan: {data['sell_plan']['amount']:,} tokens @ {data['sell_plan']['price']:.6f}
+• Holdings: 10.45M MAX  
+• Average Buy: 0.000028  
+• Current Price: 0.000030  
+• Unrealized PnL: +7.1%  
+• Target Exit: $500K Market Cap  
+• Sell Plan: 2M tokens @ 0.000050
 
 <i>Last updated: Today</i>
 """
 
 def get_sentiment_scores() -> str:
-    return """<b>🧠 Meme Sentiment Scores</b>
+    return """<b>🧠 Meme Sentiment Score</b>
 
 • $DUBI – 8.7/10 😍  
 • $ZAP – 6.1/10 😐  
@@ -179,7 +174,7 @@ Risk Level: Medium
 """
 
 def get_narrative_classification() -> str:
-    return """<b>🔠 Narrative Classifications</b>
+    return """<b>🗂️ Meme Classification</b>
 
 • $ZAZA – Dubai / Wealth  
 • $CHAD – Masculinity / Gym / Hustle  
@@ -198,10 +193,12 @@ HELP_TEXT = """<b>🛠 Available Commands:</b>
 /alerts – Whale/dev/LP risk alerts  
 /debug – Simulated output for testing  
 /pnl – Show MAX token break-even stats  
-/sentiment – Emoji/meme score for trending tokens  
+/sentiment – Meme Sentiment Score  
 /tradeprompt – Smart suggestion based on wallet activity  
-/classify – Tag token narratives using AI  
+/classify – Meme Classification  
 /watch – Add wallet to your watchlist  
+/removewallet – Remove wallet by nickname  
 /addtoken – Track a token on your list  
+/removetoken – Remove token from watchlist  
 /tokens – Show tracked token list
 """
