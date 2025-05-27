@@ -1,21 +1,25 @@
-import logging
+import os
+import requests
+from db import get_wallets
+from telegram import Bot
 
-logger = logging.getLogger(__name__)
+def detect_botnet_activity():
+    # Placeholder: implement real detection logic
+    # Example: scan whale wallets for suspicious rapid buys/sells
+    suspicious_wallets = []
+    wallets = get_wallets()
+    for label, address in wallets:
+        # You’d analyze recent transactions and flag bots
+        # For MVP, let's simulate no bots found
+        pass
+    return suspicious_wallets
 
-def detect_botnet_activity(bot):
-    """
-    Detects suspicious buy/sell bot activity from on-chain patterns.
-    Alerts the chat if detected.
-    """
-    # TODO: Implement logic with real data from blockchain or analytics APIs
-
-    suspicious_activity = [
-        {"token": "FAKE", "activity": "Large sudden sell orders by bots"},
-        {"token": "SCAM", "activity": "Bot-driven wash trading detected"},
-    ]
-
-    for event in suspicious_activity:
-        msg = f"🚨 <b>Botnet Alert:</b> Suspicious activity detected on {event['token']}\n" \
-              f"Details: {event['activity']}"
-        logger.info(f"Botnet alert: {event['token']}")
-        bot.send_message(chat_id=bot.chat_id, text=msg, parse_mode="HTML")
+def botnet_alerts(bot: Bot):
+    chat_id = os.getenv("CHAT_ID")
+    bots_found = detect_botnet_activity()
+    if bots_found:
+        for bot_wallet in bots_found:
+            msg = f"🤖 Botnet activity detected on wallet {bot_wallet}"
+            bot.send_message(chat_id=chat_id, text=msg)
+    else:
+        print("[Botnet] No suspicious bot activity detected.")
