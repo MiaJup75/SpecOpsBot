@@ -1,10 +1,11 @@
-config = {
-    "telegram_token": "7331668323:AAEHBGezLL0DyNFH5I4Kq3s-Al1NwnY8yZY",
-    "wallets": [
-        "FWg4kXnm3BmgrymEFo7BTE6iwEqgzdy4owo4qzx8WBjH",
-        "4X1MkhZE23j1sVEcCF13NHWe7DTuo8nEdP6sCvSpD4ib",
-        "3JPV9XgKi9gwBhfkF9u6q3NFJvZqmXhg7AoMjmnEEzTM"
-    ],
-    "max_token": "EQbLvkkT8htw9uiC6AG4wwHEsmV4zHQkTNyF6yJDpump",
-    "whitelist": ["7623873892"]
-}
+import os
+
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+CHAT_ID = os.getenv("CHAT_ID")
+SOLANA_RPC_URL = os.getenv("SOLANA_RPC_URL", "https://api.mainnet-beta.solana.com")
+BURNER_SECRET_KEY_B64 = os.getenv("BURNER_SECRET_KEY_B64")
+
+def validate_config():
+    missing = [k for k in ["BOT_TOKEN", "CHAT_ID"] if not os.getenv(k)]
+    if missing:
+        raise EnvironmentError(f"Missing required env variables: {', '.join(missing)}")
