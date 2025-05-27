@@ -1,120 +1,149 @@
 import logging
-from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
-from telegram.ext import Updater, CommandHandler, CallbackContext, CallbackQueryHandler
+from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram.ext import (
+    CommandHandler,
+    CallbackContext,
+    Dispatcher,
+    Updater,
+)
 from apscheduler.schedulers.background import BackgroundScheduler
-import pytz
-from flask import Flask
+from config import config
 from utils import (
     fetch_max_token_data,
-    get_trending_coins,
+    fetch_trending_tokens,
     fetch_new_tokens,
     check_suspicious_activity,
-    track_position,
-    send_target_alerts,
-    analyze_sentiment,
-    detect_stealth_launches,
-    ai_trade_prompt,
-    detect_botnets,
-    track_mirror_wallets,
     summarize_wallet_activity,
+    track_position,
+    analyze_sentiment,
+    find_stealth_launches,
+    classify_narratives,
+    detect_mirror_wallets,
 )
-from config import config
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+bot = Bot(token=config["telegram_token"])
+updater = Updater(bot=bot, use_context=True)
+dispatcher: Dispatcher = updater.dispatcher
 
-TOKEN = config["telegram_token"]
-ALLOWED_USERS = config["whitelist"]
+scheduler = BackgroundScheduler()
+scheduler.start()
 
-app = Flask(__name__)
-scheduler = BackgroundScheduler(timezone=pytz.timezone("Asia/Bangkok"))
-
+WHITELIST = config.get("whitelist", [])
+MAX_TOKEN_ADDRESS = config["max_token"]
+WALLETS = config["wallets"]
 
 def restricted(func):
     def wrapper(update: Update, context: CallbackContext, *args, **kwargs):
         user_id = str(update.effective_user.id)
-        if user_id not in ALLOWED_USERS:
-            update.message.reply_text("Unauthorized")
+        if user_id not in WHITELIST:
+            update.message.reply_text("🚫 Access denied.")
             return
         return func(update, context, *args, **kwargs)
     return wrapper
 
-
 @restricted
 def start(update: Update, context: CallbackContext):
-    message = """<b>Welcome to SolMadSpecBot!</b>
-
-Available Commands:
-/start – Show welcome message
-/help – Show command list
-/max – MAX token stats
-/trending – Top Sol meme coins
-/new – Fresh launches (<12h)
-/alerts – Suspicious activity
-/wallets – Tracked wallet activity
-/ai – Get AI trading prompt"""
-    update.message.reply_text(message, parse_mode="HTML")
-
+    message = (
+        "<b>Welcome to SolMadSpecBot!</b>\n\n"
+        "🤖 I scan Solana meme coins and alert you on:\n"
+        "• New launches under &lt;12h\n"
+        "• Trending coins by volume\n"
+        "• Suspicious whale or LP actions\n"
+        "• MAX token metrics\n"
+        "• Wallet activity summaries\n\n"
+        "📌 Type /help to view commands!"
+    )
+    context.bot.send_message(chat_id=update.effective_chat.id, text=message, parse_mode="HTML")
 
 @restricted
 def help_command(update: Update, context: CallbackContext):
-    keyboard = [
-        [InlineKeyboardButton("📈 Trending", callback_data='trending')],
-        [InlineKeyboardButton("🆕 New Launches", callback_data='new')],
-        [InlineKeyboardButton("🚨 Alerts", callback_data='alerts')],
-        [InlineKeyboardButton("🐶 MAX Token", callback_data='max')],
-        [InlineKeyboardButton("📊 Wallet Activity", callback_data='wallets')],
-        [InlineKeyboardButton("🤖 AI Prompt", callback_data='ai')],
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    update.message.reply_text("Choose a command:", reply_markup=reply_markup)
+    message = (
+        "<b>Here's what I can do:</b>\n\n"
+        "/max – MAX token stats\n"
+        "/trending – Top 5 Sol meme coins\n"
+        "/new – New token launches (&lt;12h)\n"
+        "/alerts – Suspicious activity\n"
+        "/wallets – Watchlist summaries\n"
+        "/pnl – PnL & break-even\n"
+        "/targetalerts – Targeted whale alerts\n"
+        "/sentiment – Emoji sentiment score\n"
+        "/stealthlaunches – No-social stealth launches"
+    )
+    context.bot.send_message(chat_id=update.effective_chat.id, text=message, parse_mode="HTML")
 
+@restricted
+def max_command(update: Update, context: CallbackContext):
+    message = fetch_max_token_data(MAX_TOKEN_ADDRESS)
+    context.bot.send_message(chat_id=update.effective_chat.id, text=message, parse_mode="HTML", disable_web_page_preview=True)
 
-def handle_button(update: Update, context: CallbackContext):
-    query = update.callback_query
-    query.answer()
-    command = query.data
-    fake_update = Update(update.update_id, message=query.message)
-    if command == "trending":
-        get_trending_coins(fake_update, context)
-    elif command == "new":
-        fetch_new_tokens(fake_update, context)
-    elif command == "alerts":
-        check_suspicious_activity(fake_update, context)
-    elif command == "max":
-        fetch_max_token_data(fake_update, context)
-    elif command == "wallets":
-        summarize_wallet_activity(fake_update, context)
-    elif command == "ai":
-        ai_trade_prompt(fake_update, context)
+@restricted
+def trending_command(update: Update, context: CallbackContext):
+    message = fetch_trending_tokens()
+    context.bot.send_message(chat_id=update.effective_chat.id, text=message, parse_mode="HTML")
 
+@restricted
+def new_command(update: Update, context: CallbackContext):
+    message = fetch_new_tokens()
+    context.bot.send_message(chat_id=update.effective_chat.id, text=message, parse_mode="HTML")
+
+@restricted
+def alerts_command(update: Update, context: CallbackContext):
+    message = check_suspicious_activity()
+    context.bot.send_message(chat_id=update.effective_chat.id, text=message, parse_mode="HTML")
+
+@restricted
+def wallets_command(update: Update, context: CallbackContext):
+    message = summarize_wallet_activity(WALLETS)
+    context.bot.send_message(chat_id=update.effective_chat.id, text=message, parse_mode="HTML")
+
+@restricted
+def pnl_command(update: Update, context: CallbackContext):
+    message = track_position()
+    context.bot.send_message(chat_id=update.effective_chat.id, text=message, parse_mode="HTML")
+
+@restricted
+def target_alerts(update: Update, context: CallbackContext):
+    message = detect_mirror_wallets()
+    context.bot.send_message(chat_id=update.effective_chat.id, text=message, parse_mode="HTML")
+
+@restricted
+def sentiment_command(update: Update, context: CallbackContext):
+    message = analyze_sentiment()
+    context.bot.send_message(chat_id=update.effective_chat.id, text=message, parse_mode="HTML")
+
+@restricted
+def stealth_command(update: Update, context: CallbackContext):
+    message = find_stealth_launches()
+    context.bot.send_message(chat_id=update.effective_chat.id, text=message, parse_mode="HTML")
 
 def send_daily_report():
-    logging.info("⏰ Sending daily summary...")
-    # Add reporting logic here
+    try:
+        for uid in WHITELIST:
+            bot.send_message(chat_id=uid, text=fetch_max_token_data(MAX_TOKEN_ADDRESS), parse_mode="HTML", disable_web_page_preview=True)
+            bot.send_message(chat_id=uid, text=fetch_trending_tokens(), parse_mode="HTML")
+            bot.send_message(chat_id=uid, text=fetch_new_tokens(), parse_mode="HTML")
+            bot.send_message(chat_id=uid, text=check_suspicious_activity(), parse_mode="HTML")
+            bot.send_message(chat_id=uid, text=summarize_wallet_activity(WALLETS), parse_mode="HTML")
+    except Exception as e:
+        logger.error(f"Error sending daily report: {e}")
 
+# Command registration
+dispatcher.add_handler(CommandHandler("start", start))
+dispatcher.add_handler(CommandHandler("help", help_command))
+dispatcher.add_handler(CommandHandler("max", max_command))
+dispatcher.add_handler(CommandHandler("trending", trending_command))
+dispatcher.add_handler(CommandHandler("new", new_command))
+dispatcher.add_handler(CommandHandler("alerts", alerts_command))
+dispatcher.add_handler(CommandHandler("wallets", wallets_command))
+dispatcher.add_handler(CommandHandler("pnl", pnl_command))
+dispatcher.add_handler(CommandHandler("targetalerts", target_alerts))
+dispatcher.add_handler(CommandHandler("sentiment", sentiment_command))
+dispatcher.add_handler(CommandHandler("stealthlaunches", stealth_command))
 
-def main():
-    logging.info("Running SolMadSpecBot...")
-    updater = Updater(TOKEN, use_context=True)
-    dp = updater.dispatcher
+# Daily report 9AM BKK time
+scheduler.add_job(send_daily_report, "cron", hour=9, timezone="Asia/Bangkok")
 
-    dp.add_handler(CommandHandler("start", start))
-    dp.add_handler(CommandHandler("help", help_command))
-    dp.add_handler(CommandHandler("max", fetch_max_token_data))
-    dp.add_handler(CommandHandler("trending", get_trending_coins))
-    dp.add_handler(CommandHandler("new", fetch_new_tokens))
-    dp.add_handler(CommandHandler("alerts", check_suspicious_activity))
-    dp.add_handler(CommandHandler("wallets", summarize_wallet_activity))
-    dp.add_handler(CommandHandler("ai", ai_trade_prompt))
-    dp.add_handler(CallbackQueryHandler(handle_button))
-
-    scheduler.add_job(send_daily_report, "cron", hour=9)
-    scheduler.start()
-
-    updater.start_polling()
-    app.run(host="0.0.0.0", port=10000)
-
-
-if __name__ == "__main__":
-    main()
+updater.start_polling()
+updater.idle()
