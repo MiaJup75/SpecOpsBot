@@ -29,22 +29,33 @@ class Wallet:
 
         self.client = Client(SOLANA_RPC_URL)
 
-    # Token mint addresses for your tokens
     TOKEN_OVERRIDES = {
         "MAX": {
             "mint": "EQbLvkkT8htw9uiC6AG4wwHEsmV4zHQkTNyF6yJDpump",
         },
-        # Add other tokens as needed with correct mint addresses
-        # Example:
-        # "BONK": {"mint": "So11111111111111111111111111111111111111112"},
+        "BONK": {
+            "mint": "BcNyZTcFGQK2R8ZzwTq6aJdFMSxTqudyA5qcGPPa1xRf",
+        },
+        "MEOW": {
+            "mint": "4Q3zyzS2dVj3xxidqUTM8W6aTzv7wSLGxazqX9NR8kKz",
+        },
+        "CHAD": {
+            "mint": "CHaD3DeDrzKJqVdzxh8jFqZBzUACaQhABqUeELyXmZtT",
+        },
+        "WEN": {
+            "mint": "WENkDukxfYYkCXUfgPqX4pxhPqbaAX5cRpuqcMB8C7yA",
+        },
+        "SLERF": {
+            "mint": "SLERFgXT7APNyiQF4gXvTQRcnP4aUZrZ39nFXxyWqGqw",
+        }
     }
 
     def get_swap_route(self, input_mint: str, output_mint: str, amount: int):
         params = {
             "inputMint": input_mint,
             "outputMint": output_mint,
-            "amount": str(amount),  # amount in lamports for input token
-            "slippageBps": 50,      # 0.5% slippage tolerance
+            "amount": str(amount),
+            "slippageBps": 50,  # 0.5% slippage
             "onlyDirectRoutes": False
         }
         resp = requests.get(JUPITER_API_URL, params=params)
@@ -53,7 +64,7 @@ class Wallet:
         data = resp.json()
         if not data.get("data"):
             raise Exception("No routes found by Jupiter")
-        return data["data"][0]  # Best route
+        return data["data"][0]
 
     def execute_swap(self, route, user_public_key, user_keypair):
         swap_resp = requests.post(JUPITER_SWAP_API_URL, json={"route": route})
@@ -61,18 +72,10 @@ class Wallet:
             raise Exception(f"Jupiter swap API error: {swap_resp.text}")
 
         swap_data = swap_resp.json()
-
-        # The transaction is base64 encoded; decode it
         tx_data = swap_data["swapTransaction"]
         tx_bytes = base64.b64decode(tx_data)
-
-        # Deserialize transaction for signing
         transaction = Transaction.deserialize(tx_bytes)
-
-        # Sign with user keypair
         transaction.sign(user_keypair)
-
-        # Send transaction
         raw_tx = transaction.serialize()
         send_resp = self.client.send_raw_transaction(raw_tx, opts=TxOpts(skip_confirmation=False, preflight_commitment=Confirmed))
         if "result" not in send_resp:
@@ -85,26 +88,16 @@ class Wallet:
             return f"❌ Token {symbol} not supported."
 
         mint_address = self.TOKEN_OVERRIDES[symbol]["mint"]
+        input_mint = "So11111111111111111111111111111111111111112"  # Wrapped SOL
+        amount_lamports = int(amount_sol * 1_000_000_000)
 
         try:
-            # Input mint is wrapped SOL
-            input_mint = "So11111111111111111111111111111111111111112"  # Wrapped SOL
-
-            # Convert amount_sol to lamports (1 SOL = 1_000_000_000 lamports)
-            amount_lamports = int(amount_sol * 1_000_000_000)
-
-            logger.info(f"Getting swap route for {amount_sol} SOL -> {symbol}")
-
+            logger.info(f"Getting swap route for {amount_sol} SOL → {symbol}")
             route = self.get_swap_route(input_mint, mint_address, amount_lamports)
-
             logger.info("Route found, executing swap transaction")
-
             tx_sig = self.execute_swap(route, self.keypair.public_key, self.keypair)
-
-            logger.info(f"Swap transaction sent with signature: {tx_sig}")
-
+            logger.info(f"Swap transaction sent: {tx_sig}")
             return f"✅ Swap executed for {amount_sol} SOL to {symbol}.\nTx Signature: {tx_sig}"
-
         except Exception as e:
             logger.error(f"Swap error: {e}")
             return f"❌ Swap failed: {e}"
