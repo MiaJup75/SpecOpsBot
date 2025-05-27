@@ -1,9 +1,12 @@
 import os
 import base64
+import logging
+import requests
 from solana.keypair import Keypair
 from solana.rpc.api import Client
 from solana.transaction import Transaction
-# Additional imports for Jupiter API or swap instructions as needed
+from solana.rpc.types import TxOpts
+from solana.rpc.commitment import Confirmed
 
 RPC_URL = os.getenv("SOLANA_RPC_URL", "https://api.mainnet-beta.solana.com")
 
@@ -15,30 +18,53 @@ class Wallet:
         key_bytes = base64.b64decode(b64_key)
         self.keypair = Keypair.from_secret_key(key_bytes)
         self.client = Client(RPC_URL)
+        self.logger = logging.getLogger(__name__)
 
     def buy_token(self, symbol: str, amount: float) -> str:
-        # Resolve mint/pair info from TOKEN_OVERRIDES or external API
-        # For example:
         TOKEN_OVERRIDES = {
             "MAX": {
                 "mint": "EQbLvkkT8htw9uiC6AG4wwHEsmV4zHQkTNyF6yJDpump",
-                "pair": "8fipyfvbusjpuv2wwyk8eppnk5f9dgzs8uasputwszdc",
             },
-            # Add other tokens here
+            # Add your other tokens here
         }
-        token_data = TOKEN_OVERRIDES.get(symbol)
-        if not token_data:
+
+        if symbol not in TOKEN_OVERRIDES:
             return f"⚠️ Token symbol {symbol} not recognized."
 
-        mint_address = token_data["mint"]
+        try:
+            mint = TOKEN_OVERRIDES[symbol]["mint"]
+            # Convert SOL amount to lamports
+            amount_lamports = int(amount * 1_000_000_000)
 
-        # TODO: Implement swap logic here, either:
-        # - Call Jupiter Aggregator API to get swap route and build transaction
-        # - Or build raw Solana instructions for swap
-        #
-        # For now, simulate success:
+            url = (
+                "https://quote-api.jup.ag/v1/quote?"
+                f"inputMint=So11111111111111111111111111111111111111112&"
+                f"outputMint={mint}&"
+                f"amount={amount_lamports}&"
+                f"slippage=1"
+            )
+            self.logger.info(f"Requesting Jupiter quote: {url}")
+            response = requests.get(url, timeout=10)
+            if response.status_code != 200:
+                return f"⚠️ Jupiter API error: HTTP {response.status_code}"
 
-        # Simulated tx signature placeholder
-        simulated_tx_sig = "SIMULATED_TX_SIGNATURE"
+            data = response.json()
+            if not data.get("data"):
+                return "⚠️ No swap routes found by Jupiter."
 
-        return f"✅ Successfully bought {amount} {symbol} (tx: {simulated_tx_sig})"
+            route = data["data"][0]
+            swap_tx_base64 = route["swapTransaction"]
+
+            tx_bytes = base64.b64decode(swap_tx_base64)
+            transaction = Transaction.deserialize(tx_bytes)
+            transaction.sign(self.keypair)
+
+            tx_sig = self.client.send_raw_transaction(transaction.serialize(), opts=TxOpts(skip_confirmation=False))
+
+            self.client.confirm_transaction(tx_sig["result"], commitment=Confirmed)
+
+            return f"✅ Bought {amount} {symbol}. Tx signature: {tx_sig['result']}"
+
+        except Exception as e:
+            self.logger.error(f"Error during buy_token: {e}")
+            return f"⚠️ Swap failed: {e}"
