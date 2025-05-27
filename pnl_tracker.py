@@ -1,23 +1,21 @@
 import os
 import datetime
 import requests
-from db import get_tokens
+from db import get_tokens, get_wallets
 from cost_tracker import get_dynamic_avg_cost
 
-WALLET_ADDRESS = "FWg4kXnm3BmgrymEFo7BTE6iwEqgzdy4owo4qzx8WBjH"
-
-# Add per-token config for pair/mint/target. avg_cost is now optional
+# Token config (add your tokens here)
 TOKEN_OVERRIDES = {
     "MAX": {
         "pair": "8fipyfvbusjpuv2wwyk8eppnk5f9dgzs8uasputwszdc",
         "mint": "EQbLvkkT8htw9uiC6AG4wwHEsmV4zHQkTNyF6yJDpump",
         "target": 0.000050
     }
-    # Add more tokens here with their pair + mint address
+    # add more tokens here as needed
 }
 
-def get_token_balance(mint_address):
-    url = f"https://public-api.solscan.io/account/tokens?account={WALLET_ADDRESS}"
+def get_token_balance(wallet_address, mint_address):
+    url = f"https://public-api.solscan.io/account/tokens?account={wallet_address}"
     try:
         res = requests.get(url, timeout=10)
         for token in res.json():
@@ -27,58 +25,61 @@ def get_token_balance(mint_address):
         print(f"[Solscan Error] {e}")
     return 0.0
 
-def fetch_pnl_data():
-    symbol = "MAX"
-    data = TOKEN_OVERRIDES.get(symbol)
-    if not data:
-        return None
+def get_total_token_balance(mint_address):
+    wallets = get_wallets()
+    total_balance = 0.0
+    for label, wallet_addr in wallets:
+        bal = get_token_balance(wallet_addr, mint_address)
+        total_balance += bal
+    return total_balance
 
-    balance = get_token_balance(data['mint'])
-    if balance == 0:
-        return None
+def get_pnl_report():
+    tracked = get_tokens()
+    lines = ["<b>📊 Multi-Token PnL Summary</b>\n"]
+    any_data = False
 
-    try:
-        url = f"https://api.dexscreener.com/latest/dex/pairs/solana/{data['pair']}"
-        r = requests.get(url, timeout=5)
-        info = r.json().get("pair", {})
+    for symbol in tracked:
+        symbol = symbol.upper()
+        data = TOKEN_OVERRIDES.get(symbol)
+        if not data:
+            continue
 
-        price = float(info.get("priceUsd", 0))
-        avg_cost = get_dynamic_avg_cost() or 0.0
-        if avg_cost == 0.0:
-            return None
+        pair = data.get("pair")
+        mint = data.get("mint")
+        target = data.get("target", 0.0)
 
-        pnl_pct = ((price - avg_cost) / avg_cost) * 100
-        est_value = price * balance
+        balance = get_total_token_balance(mint)
+        if balance == 0:
+            continue
 
-        return {
-            "holdings": balance,
-            "avg_cost": avg_cost,
-            "current_price": price,
-            "pnl_pct": pnl_pct,
-            "target_exit": 500000,  # example target exit market cap
-            "sell_plan": {"amount": 2000000, "price": 0.00005},
-            "estimated_value": est_value
-        }
-    except Exception as e:
-        print(f"[PnL fetch error for {symbol}] {e}")
-        return None
+        try:
+            url = f"https://api.dexscreener.com/latest/dex/pairs/solana/{pair}"
+            r = requests.get(url, timeout=5)
+            info = r.json().get("pair", {})
+            price = float(info.get("priceUsd", 0))
+            mcap = float(info.get("marketCap", 0))
+            lp = float(info.get("liquidity", {}).get("usd", 0))
+            vol = float(info.get("volume", {}).get("h24", 0))
 
-def check_max_pnl(bot):
-    data = fetch_pnl_data()
-    if not data:
-        return
+            avg_cost = get_dynamic_avg_cost(symbol) or 0.0
+            if avg_cost == 0.0:
+                continue
 
-    lines = [f"""<b>📊 MAX Token PnL Summary</b>
+            est = price * balance
+            pnl_pct = ((price - avg_cost) / avg_cost) * 100
+            status = "🎯" if price >= target else ""
 
-• Holdings: {data['holdings']:.2f} MAX  
-• Average Buy: {data['avg_cost']:.6f}  
-• Current Price: {data['current_price']:.6f}  
-• Unrealized PnL: {data['pnl_pct']:+.1f}%  
-• Target Exit: ${data['target_exit']:,} Market Cap  
-• Sell Plan: {data['sell_plan']['amount']:,} tokens @ {data['sell_plan']['price']:.6f}
+            lines.append(f"""<b>${symbol}</b> – {pnl_pct:+.1f}% {status}  
+Holdings: {balance:,.2f}  
+Est: ${est:,.0f} | P: ${price:.6f}  
+MC: ${mcap:,.0f} | LP: ${lp:,.0f} | Vol: ${vol:,.0f}\n""")
+            any_data = True
 
-<i>Checked at {datetime.datetime.now().strftime('%H:%M:%S')}</i>
-"""]
+        except Exception as e:
+            print(f"[PnL fetch error for {symbol}] {e}")
 
-    msg = "\n".join(lines)
-    bot.send_message(chat_id=os.getenv("CHAT_ID"), text=msg, parse_mode="HTML")
+    if not any_data:
+        return "No PnL data available for your tracked tokens."
+
+    lines.append(f"<i>Checked at {datetime.datetime.now().strftime('%H:%M:%S')}</i>")
+    return "\n".join(lines)
