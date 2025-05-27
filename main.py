@@ -74,11 +74,21 @@ def get_main_keyboard():
 def start(update: Update, context: CallbackContext) -> None:
     welcome_text = """<b>👋 Welcome to SolMadSpecBot!</b>
 
-Use the buttons below or type:
+Use the buttons below or type commands:
+
 /max /wallets /trending  
 /new /alerts /debug  
 /pnl /sentiment /tradeprompt /classify  
-/watch &lt;nickname&gt; &lt;wallet&gt; /addtoken $TOKEN /tokens
+
+➤ To add a wallet to watch:  
+/watch &lt;nickname&gt; &lt;wallet_address&gt;  
+Example: /watch MyWallet 4FEj7nwm5wZXbMo3zSDiV51eLgbFWgPtFRHATUFpu9As  
+
+➤ To add a token:  
+/addtoken $TOKEN  
+
+➤ To list tokens:  
+/tokens  
 
 Daily updates sent at 9AM Bangkok time (GMT+7)."""
     update.message.reply_text(welcome_text, reply_markup=get_main_keyboard(), parse_mode=ParseMode.HTML)
@@ -119,7 +129,8 @@ def watch_command(update: Update, context: CallbackContext) -> None:
     try:
         if len(context.args) < 2:
             update.message.reply_text(
-                "Usage: /watch <nickname> <wallet_address>\nExample: /watch MyWallet 4FEj7nwm5wZXbMo3zSDiV51eLgbFWgPtFRHATUFpu9As",
+                "❗ Usage: /watch <nickname> <wallet_address>\n"
+                "Example: /watch MyWallet 4FEj7nwm5wZXbMo3zSDiV51eLgbFWgPtFRHATUFpu9As",
                 parse_mode=ParseMode.HTML
             )
             return
