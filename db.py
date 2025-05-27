@@ -10,8 +10,8 @@ def init_db():
 
     # Wallet watchlist with labels (nicknames)
     c.execute('''CREATE TABLE IF NOT EXISTS wallets (
-        label TEXT,
-        address TEXT PRIMARY KEY
+        label TEXT PRIMARY KEY,
+        address TEXT
     )''')
 
     # Token tracking list
@@ -39,6 +39,14 @@ def get_wallets():
     conn.close()
     print(f"[DB] Retrieved wallets: {results}")
     return results
+
+def remove_wallet(label):
+    print(f"[DB] Removing wallet with label: {label}")
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("DELETE FROM wallets WHERE label = ?", (label,))
+    conn.commit()
+    conn.close()
 
 # TOKEN TRACKING
 def add_token(symbol):
