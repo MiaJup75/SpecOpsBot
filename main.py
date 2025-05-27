@@ -3,7 +3,7 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ParseMo
 from telegram.ext import Updater, CommandHandler, CallbackContext, CallbackQueryHandler, Dispatcher
 from flask import Flask, request
 import os
-import pytz  # ✅ For timezone support
+import pytz
 
 from utils import (
     get_max_token_stats, get_trending_coins, get_new_tokens, get_suspicious_activity_alerts,
@@ -11,8 +11,10 @@ from utils import (
     get_pnl_report, get_sentiment_scores, get_trade_prompt, get_narrative_classification
 )
 from db import init_db, add_wallet, get_wallets, add_token, get_tokens
-from scanner import scan_new_tokens  # ✅ Tier 2 LP scanner
-from stealth_scanner import scan_stealth_tokens  # ✅ Tier 3 stealth scanner
+from scanner import scan_new_tokens  # Tier 2
+from stealth_scanner import scan_stealth_tokens  # Tier 3
+from pnl_tracker import check_max_pnl  # Tier 3
+from price_alerts import check_price_triggers  # Tier 3
 from apscheduler.schedulers.background import BackgroundScheduler
 
 # Logging
@@ -146,8 +148,10 @@ def send_daily_report(bot):
 
 scheduler = BackgroundScheduler(timezone=pytz.timezone("Asia/Bangkok"))
 scheduler.add_job(lambda: send_daily_report(dispatcher.bot), 'cron', hour=9, minute=0)
-scheduler.add_job(lambda: scan_new_tokens(dispatcher.bot), 'interval', minutes=5)  # Tier 2
-scheduler.add_job(lambda: scan_stealth_tokens(dispatcher.bot), 'interval', minutes=7)  # Tier 3 stealth radar
+scheduler.add_job(lambda: scan_new_tokens(dispatcher.bot), 'interval', minutes=5)       # Tier 2
+scheduler.add_job(lambda: scan_stealth_tokens(dispatcher.bot), 'interval', minutes=7)   # Tier 3
+scheduler.add_job(lambda: check_max_pnl(dispatcher.bot), 'interval', minutes=10)        # Tier 3
+scheduler.add_job(lambda: check_price_triggers(dispatcher.bot), 'interval', minutes=7)  # Tier 3
 scheduler.start()
 
 # --- Webhook Setup --- #
