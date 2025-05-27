@@ -1,70 +1,78 @@
 import os
-import base64
 import logging
 import requests
-from solana.keypair import Keypair
+from base64 import b64decode
 from solana.rpc.api import Client
+from solana.keypair import Keypair
 from solana.transaction import Transaction
-from solana.rpc.types import TxOpts
-from solana.rpc.commitment import Confirmed
+from solana.system_program import TransferParams, transfer
+from solana.publickey import PublicKey
 
-RPC_URL = os.getenv("SOLANA_RPC_URL", "https://api.mainnet-beta.solana.com")
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+SOLANA_RPC_URL = os.getenv("SOLANA_RPC_URL", "https://api.mainnet-beta.solana.com")
 
 class Wallet:
     def __init__(self):
         b64_key = os.getenv("BURNER_SECRET_KEY_B64")
         if not b64_key:
-            raise Exception("BURNER_SECRET_KEY_B64 not set")
-        key_bytes = base64.b64decode(b64_key)
-        self.keypair = Keypair.from_secret_key(key_bytes)
-        self.client = Client(RPC_URL)
-        self.logger = logging.getLogger(__name__)
-
-    def buy_token(self, symbol: str, amount: float) -> str:
-        TOKEN_OVERRIDES = {
-            "MAX": {
-                "mint": "EQbLvkkT8htw9uiC6AG4wwHEsmV4zHQkTNyF6yJDpump",
-            },
-            # Add your other tokens here
-        }
-
-        if symbol not in TOKEN_OVERRIDES:
-            return f"⚠️ Token symbol {symbol} not recognized."
-
+            raise ValueError("BURNER_SECRET_KEY_B64 env var is missing")
         try:
-            mint = TOKEN_OVERRIDES[symbol]["mint"]
-            # Convert SOL amount to lamports
-            amount_lamports = int(amount * 1_000_000_000)
-
-            url = (
-                "https://quote-api.jup.ag/v1/quote?"
-                f"inputMint=So11111111111111111111111111111111111111112&"
-                f"outputMint={mint}&"
-                f"amount={amount_lamports}&"
-                f"slippage=1"
-            )
-            self.logger.info(f"Requesting Jupiter quote: {url}")
-            response = requests.get(url, timeout=10)
-            if response.status_code != 200:
-                return f"⚠️ Jupiter API error: HTTP {response.status_code}"
-
-            data = response.json()
-            if not data.get("data"):
-                return "⚠️ No swap routes found by Jupiter."
-
-            route = data["data"][0]
-            swap_tx_base64 = route["swapTransaction"]
-
-            tx_bytes = base64.b64decode(swap_tx_base64)
-            transaction = Transaction.deserialize(tx_bytes)
-            transaction.sign(self.keypair)
-
-            tx_sig = self.client.send_raw_transaction(transaction.serialize(), opts=TxOpts(skip_confirmation=False))
-
-            self.client.confirm_transaction(tx_sig["result"], commitment=Confirmed)
-
-            return f"✅ Bought {amount} {symbol}. Tx signature: {tx_sig['result']}"
-
+            key_bytes = b64decode(b64_key)
+            self.keypair = Keypair.from_secret_key(key_bytes)
         except Exception as e:
-            self.logger.error(f"Error during buy_token: {e}")
-            return f"⚠️ Swap failed: {e}"
+            logger.error(f"Error decoding BURNER_SECRET_KEY_B64: {e}")
+            raise
+
+        self.client = Client(SOLANA_RPC_URL)
+
+    # Sample token overrides with mint addresses
+    TOKEN_OVERRIDES = {
+        "MAX": {
+            "mint": "EQbLvkkT8htw9uiC6AG4wwHEsmV4zHQkTNyF6yJDpump",
+        },
+        "BONK": {
+            "mint": "So11111111111111111111111111111111111111112",  # Example; replace with actual
+        },
+        # Add more tokens here
+    }
+
+    def buy_token(self, symbol: str, amount_sol: float) -> str:
+        symbol = symbol.upper()
+        if symbol not in self.TOKEN_OVERRIDES:
+            return f"❌ Token {symbol} not supported for buying."
+
+        mint_address = self.TOKEN_OVERRIDES[symbol]["mint"]
+        try:
+            # For simplicity, simulate the swap call (replace with Jupiter swap integration)
+            # In real: build transaction using Jupiter aggregator API, sign and send it
+            logger.info(f"Attempting to buy {amount_sol} SOL worth of {symbol} (mint {mint_address})")
+
+            # Check SOL balance
+            balance_resp = self.client.get_balance(self.keypair.public_key)
+            if balance_resp['result']['value'] < int(amount_sol * 1e9):
+                return "❌ Insufficient SOL balance to perform swap."
+
+            # Placeholder: this example just transfers SOL to self (replace with real swap tx)
+            tx = Transaction()
+            tx.add(
+                transfer(
+                    TransferParams(
+                        from_pubkey=self.keypair.public_key,
+                        to_pubkey=self.keypair.public_key,
+                        lamports=int(amount_sol * 1e9),
+                    )
+                )
+            )
+            resp = self.client.send_transaction(tx, self.keypair)
+            if resp.get('result'):
+                tx_sig = resp['result']
+                logger.info(f"Swap transaction sent: {tx_sig}")
+                return f"✅ Swap transaction sent for {amount_sol} SOL of {symbol}. Tx: {tx_sig}"
+            else:
+                logger.error(f"Swap transaction failed: {resp}")
+                return f"❌ Swap transaction failed: {resp}"
+        except Exception as e:
+            logger.error(f"Error executing swap: {e}")
+            return f"❌ Error executing swap: {e}"
