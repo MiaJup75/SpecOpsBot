@@ -90,7 +90,7 @@ def handle_callback(update: Update, context: CallbackContext) -> None:
     command = query.data
 
     func_map = {
-        'start': start,
+        'start': lambda: start(update, context),
         'help': lambda: HELP_TEXT,
         'max': get_max_token_stats,
         'wallets': get_wallet_summary,
@@ -103,8 +103,8 @@ def handle_callback(update: Update, context: CallbackContext) -> None:
         'classify': get_narrative_classification,
         'debug': simulate_debug_output,
         'panel': lambda: "🔘 Use the commands or buttons to navigate.",
-        'stealth': lambda: "Stealth Launch Radar is running and alerts will be sent automatically.",
-        'pricealerts': lambda: "Price Alerts are active and will notify you of triggers.",
+        'stealth': lambda: "Stealth Launch Radar is running and will alert you on suspicious launches.",
+        'pricealerts': lambda: "Price Alerts are active and will notify you of tokens hitting target prices.",
         'botnet': lambda: "Botnet detection is active and monitoring suspicious activity.",
         'mirror': lambda: "Mirror trade monitoring is enabled.",
         'friendwallets': lambda: "Friend wallet sync is active."
@@ -121,7 +121,7 @@ def handle_callback(update: Update, context: CallbackContext) -> None:
 
     context.bot.send_message(chat_id=query.message.chat.id, text=text, parse_mode=ParseMode.HTML)
 
-# --- Missing watch_command implementation to fix the error ---
+# --- Watch Command ---
 
 def watch_command(update: Update, context: CallbackContext) -> None:
     try:
@@ -135,8 +135,6 @@ def watch_command(update: Update, context: CallbackContext) -> None:
     except Exception as e:
         logger.error(f"Error adding wallet: {e}")
         update.message.reply_text("⚠️ Error adding wallet.")
-
-# Existing handlers for tokens, removals, etc.
 
 def removewallet_command(update: Update, context: CallbackContext) -> None:
     if not context.args:
@@ -181,7 +179,12 @@ def wallets_command(update: Update, context: CallbackContext) -> None:
     msg = "<b>👛 Watched Wallets</b>\n" + "\n".join([f"• {label}\n<code>{addr}</code>" for label, addr in wallets])
     update.message.reply_text(msg, parse_mode=ParseMode.HTML)
 
-# Register command handlers
+# Manual commands for stealth and price alerts info
+def stealth_command(update: Update, context: CallbackContext) -> None:
+    update.message.reply_text("Stealth Launch Radar is running and alerts will be sent automatically.")
+
+def pricealerts_command(update: Update, context: CallbackContext) -> None:
+    update.message.reply_text("Price Alerts are active and will notify you of tokens reaching target prices.")
 
 dispatcher.add_handler(CommandHandler("start", start))
 dispatcher.add_handler(CommandHandler("panel", panel_command))
@@ -200,10 +203,11 @@ dispatcher.add_handler(CommandHandler("pnl", lambda u, c: u.message.reply_text(g
 dispatcher.add_handler(CommandHandler("sentiment", lambda u, c: u.message.reply_text(get_sentiment_scores(), parse_mode=ParseMode.HTML)))
 dispatcher.add_handler(CommandHandler("tradeprompt", lambda u, c: u.message.reply_text(get_trade_prompt(), parse_mode=ParseMode.HTML)))
 dispatcher.add_handler(CommandHandler("classify", lambda u, c: u.message.reply_text(get_narrative_classification(), parse_mode=ParseMode.HTML)))
+dispatcher.add_handler(CommandHandler("stealth", stealth_command))
+dispatcher.add_handler(CommandHandler("pricealerts", pricealerts_command))
 dispatcher.add_handler(CallbackQueryHandler(handle_callback))
 
 # Scheduler jobs
-
 def send_daily_report(bot):
     chat_id = os.getenv("CHAT_ID")
     report = get_full_daily_report()
@@ -219,7 +223,6 @@ scheduler.add_job(lambda: sync_friend_wallets(dispatcher.bot), 'interval', minut
 scheduler.start()
 
 # Webhook routes
-
 @app.route('/')
 def index():
     return "SolMadSpecBot is running."
@@ -231,7 +234,6 @@ def webhook():
     return 'ok'
 
 # Main app run
-
 if __name__ == '__main__':
     init_db()
     updater.bot.set_my_commands([
