@@ -44,7 +44,7 @@ Use the buttons below or type:
 /max /wallets /trending  
 /new /alerts /debug  
 /pnl /sentiment /tradeprompt /classify  
-/watch <wallet> /addtoken $TOKEN /tokens
+/watch &lt;wallet&gt; /addtoken $TOKEN /tokens
 
 Daily updates sent at 9AM Bangkok time.""",
         reply_markup=get_main_keyboard(),
