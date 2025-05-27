@@ -10,6 +10,7 @@ from utils import (
     get_pnl_report, get_sentiment_scores, get_trade_prompt, get_narrative_classification
 )
 from db import init_db, add_wallet, get_wallets, add_token, get_tokens
+from scanner import scan_new_tokens  # ✅ NEW: Tier 2 Scanner Import
 from apscheduler.schedulers.background import BackgroundScheduler
 
 # Logging
@@ -38,7 +39,6 @@ def get_main_keyboard():
     ])
 
 # --- Command Handlers --- #
-
 def start(update: Update, context: CallbackContext) -> None:
     update.message.reply_text(
         """<b>👋 Welcome to SolMadSpecBot!</b>
@@ -118,7 +118,6 @@ def tokens_command(update: Update, context: CallbackContext) -> None:
     update.message.reply_text(f"<b>📋 Watched Tokens</b>\n{token_list}", parse_mode=ParseMode.HTML)
 
 # --- Register Command Handlers --- #
-
 dispatcher.add_handler(CommandHandler("start", start))
 dispatcher.add_handler(CommandHandler("panel", panel_command))
 dispatcher.add_handler(CommandHandler("max", lambda u, c: u.message.reply_text(get_max_token_stats(), parse_mode=ParseMode.HTML)))
@@ -137,7 +136,7 @@ dispatcher.add_handler(CommandHandler("classify", lambda u, c: u.message.reply_t
 dispatcher.add_handler(CommandHandler("help", lambda u, c: u.message.reply_text(HELP_TEXT, parse_mode=ParseMode.HTML)))
 dispatcher.add_handler(CallbackQueryHandler(handle_callback))
 
-# --- Scheduler Job --- #
+# --- Scheduler Jobs --- #
 def send_daily_report(bot):
     chat_id = os.getenv("CHAT_ID")
     report = get_full_daily_report()
@@ -145,6 +144,7 @@ def send_daily_report(bot):
 
 scheduler = BackgroundScheduler()
 scheduler.add_job(lambda: send_daily_report(dispatcher.bot), 'cron', hour=9, minute=0, timezone='Asia/Bangkok')
+scheduler.add_job(lambda: scan_new_tokens(dispatcher.bot), 'interval', minutes=5)  # ✅ NEW SCANNER JOB
 scheduler.start()
 
 # --- Webhook Setup --- #
