@@ -173,6 +173,17 @@ Risk Level: Medium
 <i>Backtested against mirror wallet clusters</i>
 """
 
+def get_narrative_classification() -> str:
+    return """<b>🔠 Narrative Classifications</b>
+
+• $ZAZA – Dubai / Wealth  
+• $CHAD – Masculinity / Gym / Hustle  
+• $SIMP – Memecoin / Sarcasm  
+• $AIPEPE – AI + Meme
+
+<i>Generated using trending hashtags and X mentions</i>
+"""
+
 HELP_TEXT = """<b>🛠 Available Commands:</b>
 
 /max – View MAX token stats  
