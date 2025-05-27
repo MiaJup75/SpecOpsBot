@@ -1,53 +1,39 @@
-import sqlite3
-
+# Add columns nickname and description to tokens table
 def init_db():
     conn = sqlite3.connect("solmad.db")
     c = conn.cursor()
 
-    # Wallet watchlist with labels
     c.execute('''CREATE TABLE IF NOT EXISTS wallets (
         label TEXT,
         address TEXT PRIMARY KEY
     )''')
 
-    # Token tracking list
     c.execute('''CREATE TABLE IF NOT EXISTS tokens (
-        symbol TEXT PRIMARY KEY
+        symbol TEXT PRIMARY KEY,
+        nickname TEXT,
+        description TEXT
     )''')
 
     conn.commit()
     conn.close()
 
-# WALLET TRACKING
-def add_wallet(label, address):
+def add_token(symbol, nickname=None, description=None):
     conn = sqlite3.connect("solmad.db")
     c = conn.cursor()
-    c.execute("INSERT OR REPLACE INTO wallets (label, address) VALUES (?, ?)", (label, address))
+    c.execute("""
+        INSERT OR REPLACE INTO tokens (symbol, nickname, description)
+        VALUES (?, ?, ?)
+    """, (symbol.upper(), nickname, description))
     conn.commit()
     conn.close()
 
-def remove_wallet(address):
+def get_tokens():
     conn = sqlite3.connect("solmad.db")
     c = conn.cursor()
-    c.execute("DELETE FROM wallets WHERE address = ?", (address,))
-    conn.commit()
-    conn.close()
-
-def get_wallets():
-    conn = sqlite3.connect("solmad.db")
-    c = conn.cursor()
-    c.execute("SELECT label, address FROM wallets")
+    c.execute("SELECT symbol, nickname, description FROM tokens")
     results = c.fetchall()
     conn.close()
     return results
-
-# TOKEN TRACKING
-def add_token(symbol):
-    conn = sqlite3.connect("solmad.db")
-    c = conn.cursor()
-    c.execute("INSERT OR IGNORE INTO tokens (symbol) VALUES (?)", (symbol.upper(),))
-    conn.commit()
-    conn.close()
 
 def remove_token(symbol):
     conn = sqlite3.connect("solmad.db")
@@ -55,11 +41,3 @@ def remove_token(symbol):
     c.execute("DELETE FROM tokens WHERE symbol = ?", (symbol.upper(),))
     conn.commit()
     conn.close()
-
-def get_tokens():
-    conn = sqlite3.connect("solmad.db")
-    c = conn.cursor()
-    c.execute("SELECT symbol FROM tokens")
-    tokens = [row[0] for row in c.fetchall()]
-    conn.close()
-    return tokens
