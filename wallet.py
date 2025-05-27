@@ -15,11 +15,21 @@ SOLANA_RPC_URL = os.getenv("SOLANA_RPC_URL", "https://api.mainnet-beta.solana.co
 JUPITER_API_URL = "https://quote-api.jup.ag/v1/quote"
 JUPITER_SWAP_API_URL = "https://quote-api.jup.ag/v1/swap"
 
+def fix_base64_padding(b64_string: str) -> str:
+    b64_string = b64_string.strip()
+    missing_padding = len(b64_string) % 4
+    if missing_padding:
+        b64_string += '=' * (4 - missing_padding)
+    return b64_string
+
 class Wallet:
     def __init__(self):
         b64_key = os.getenv("BURNER_SECRET_KEY_B64")
         if not b64_key:
             raise ValueError("BURNER_SECRET_KEY_B64 env var missing")
+
+        b64_key = fix_base64_padding(b64_key)
+
         try:
             key_bytes = base64.b64decode(b64_key)
             self.keypair = Keypair.from_secret_key(key_bytes)
