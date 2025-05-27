@@ -1,5 +1,5 @@
 import logging
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ParseMode
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ParseMode, BotCommand
 from telegram.ext import Updater, CommandHandler, CallbackContext, CallbackQueryHandler, Dispatcher
 from flask import Flask, request
 import os
@@ -31,7 +31,10 @@ def get_main_keyboard():
         [InlineKeyboardButton("📈 Trending", callback_data='trending'),
          InlineKeyboardButton("🆕 New", callback_data='new')],
         [InlineKeyboardButton("🚨 Alerts", callback_data='alerts'),
-         InlineKeyboardButton("📊 PnL", callback_data='pnl')]
+         InlineKeyboardButton("📊 PnL", callback_data='pnl')],
+        [InlineKeyboardButton("➕ Add Wallet", switch_inline_query_current_chat='/watch '),
+         InlineKeyboardButton("➕ Add Token", switch_inline_query_current_chat='/addtoken $')],
+        [InlineKeyboardButton("📋 View Tokens", switch_inline_query_current_chat='/tokens')]
     ])
 
 # --- Command Handlers --- #
@@ -78,7 +81,7 @@ def handle_callback(update: Update, context: CallbackContext) -> None:
 def watch_command(update: Update, context: CallbackContext) -> None:
     try:
         if len(context.args) != 1:
-            update.message.reply_text("Usage: /watch <wallet_address>")
+            update.message.reply_text("Usage: /watch &lt;wallet_address&gt;", parse_mode=ParseMode.HTML)
             return
         address = context.args[0]
         label = f"Wallet {address[:4]}...{address[-4:]}"
@@ -135,7 +138,6 @@ dispatcher.add_handler(CommandHandler("help", lambda u, c: u.message.reply_text(
 dispatcher.add_handler(CallbackQueryHandler(handle_callback))
 
 # --- Scheduler Job --- #
-
 def send_daily_report(bot):
     chat_id = os.getenv("CHAT_ID")
     report = get_full_daily_report()
@@ -146,7 +148,6 @@ scheduler.add_job(lambda: send_daily_report(dispatcher.bot), 'cron', hour=9, min
 scheduler.start()
 
 # --- Webhook Setup --- #
-
 @app.route('/')
 def index():
     return "SolMadSpecBot is running."
@@ -158,7 +159,22 @@ def webhook():
     return 'ok'
 
 # --- Run App --- #
-
 if __name__ == '__main__':
     init_db()
+    updater.bot.set_my_commands([
+        BotCommand("start", "Show welcome message and buttons"),
+        BotCommand("max", "Show MAX token stats"),
+        BotCommand("wallets", "List all watched wallets"),
+        BotCommand("watch", "Add a new wallet to watch"),
+        BotCommand("addtoken", "Add a token to watch"),
+        BotCommand("tokens", "List all tracked tokens"),
+        BotCommand("trending", "View top trending meme coins"),
+        BotCommand("new", "Show new token launches"),
+        BotCommand("alerts", "Show whale/dev/suspicious alerts"),
+        BotCommand("pnl", "Check your MAX token PnL"),
+        BotCommand("sentiment", "See meme sentiment scores"),
+        BotCommand("tradeprompt", "AI-generated trade idea"),
+        BotCommand("classify", "Classify token narratives"),
+        BotCommand("debug", "Run simulated debug outputs")
+    ])
     app.run(host='0.0.0.0', port=PORT)
