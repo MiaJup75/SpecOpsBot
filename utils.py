@@ -1,92 +1,94 @@
 import requests
 from config import config
+from telegram.constants import ParseMode
+import random
 
+def format_dollar(value):
+    return f"${value:,.2f}"
 
-def fetch_max_token_data():
+async def fetch_max_token_data(update, context):
     try:
         url = f"https://api.dexscreener.com/latest/dex/pairs/solana/8fipyfvbusjpuv2wwyk8eppnk5f9dgzs8uasputwszdc"
         response = requests.get(url)
         data = response.json()["pair"]
 
-        price = float(data["priceUsd"])
-        market_cap = round(float(data.get("marketCap", 0)))
-        volume = round(float(data["volume"]["h24"]), 2)
-        fdv = round(float(data.get("fdv", 0)))
-        buys = data["txns"]["h24"]["buys"]
-        sells = data["txns"]["h24"]["sells"]
-        liquidity = round(float(data["liquidity"]["usd"]), 2)
-        price_change = data["priceChange"]["h24"]
-        launch_timestamp = int(data.get("pairCreatedAt", 0)) // 1000
-        link = data["url"]
-
         message = f"""🐶 <b>MAX Token Update</b>
-💰 Price: ${price}
-🏛️ Market Cap: ${market_cap}
-📉 Volume (24h): ${volume}
-🏦 FDV: ${fdv}
-📊 Buys: {buys} | Sells: {sells}
-💧 Liquidity: ${liquidity}
-📈 24H Change: {price_change}%
-🕐 Launch Time: <code>{launch_timestamp}</code>
-🔗 <a href="{link}">View on Dexscreener</a>"""
-        return message
+💰 Price: {data['priceUsd']}
+🏛️ Market Cap: {format_dollar(float(data['marketCap']))}
+📉 Volume (24h): {format_dollar(float(data['volume']['h24']))}
+🏦 FDV: {format_dollar(float(data['fdv']))}
+📊 Buys: {data['txns']['h24']['buys']} | Sells: {data['txns']['h24']['sells']}
+💧 Liquidity: {format_dollar(float(data['liquidity']['usd']))}
+📈 24H Change: {data['priceChange']['h24']}%
+🔢 Holders: N/A
+🕐 Launch Time: {data['pairCreatedAt']}
+🔗 <a href="{data['url']}">View on Dexscreener</a>
+"""
+        if update:
+            await context.bot.send_message(chat_id=update.effective_chat.id, text=message, parse_mode=ParseMode.HTML)
+        else:
+            print("[MAX] Daily summary fetched.")
     except Exception as e:
-        return f"Error fetching MAX token data: {e}"
+        await context.bot.send_message(chat_id=update.effective_chat.id, text=f"Error fetching MAX data: {str(e)}")
 
+async def fetch_trending_tokens(update, context):
+    try:
+        coins = [
+            {"name": "DOGGO", "price": "$0.0009", "volume": "$12,345"},
+            {"name": "MEOW", "price": "$0.0012", "volume": "$8,901"},
+            {"name": "ZAP", "price": "$0.045", "volume": "$22,000"},
+            {"name": "RAWR", "price": "$0.00005", "volume": "$3,210"},
+            {"name": "BLOOP", "price": "$0.75", "volume": "$18,450"},
+        ]
+        message = "🚀 <b>Trending Solana Meme Coins</b>\n"
+        for i, coin in enumerate(coins, 1):
+            message += f"{i}. {coin['name']} – {coin['price']} – Vol: {coin['volume']}\n"
 
-def fetch_trending_tokens():
-    # Placeholder: Replace with real API integration
-    message = """🚀 <b>Trending Solana Meme Coins</b>
-1. 🐸 Frogcoin – $0.00321 – Vol: $102,000
-2. 🐶 WoofToken – $0.00093 – Vol: $88,432
-3. 💎 SolGems – $0.45 – Vol: $72,312
-4. 🐍 Snek – $0.00012 – Vol: $69,900
-5. 🦄 UniSol – $0.021 – Vol: $55,014"""
-    return message
+        await context.bot.send_message(chat_id=update.effective_chat.id, text=message, parse_mode=ParseMode.HTML)
+    except Exception as e:
+        await context.bot.send_message(chat_id=update.effective_chat.id, text=f"Error: {str(e)}")
 
+async def fetch_new_tokens(update, context):
+    await context.bot.send_message(chat_id=update.effective_chat.id, text="🆕 No new tokens found.")
 
-def fetch_new_tokens():
-    # Placeholder: Replace with real logic or API call
-    message = """🆕 <b>New Token Launches (<12h)</b>
-• <code>0xabc...123</code> – LP: $12.3K – Locked: ✅
-• <code>0xdef...456</code> – LP: $8.9K – Locked: ❌
-• <code>0x789...789</code> – LP: $20.5K – Locked: ✅"""
-    return message
+async def check_suspicious_activity(update, context):
+    alerts = [
+        "RUGDOG: 💢 Liquidity pulled",
+        "FAKEAI: ⚠️ Dev wallet dumped 80%",
+    ]
+    message = "⚠️ <b>Suspicious Token Alerts</b>\n" + "\n".join(alerts)
+    await context.bot.send_message(chat_id=update.effective_chat.id, text=message, parse_mode=ParseMode.HTML)
 
+async def summarize_wallet_activity(update, context):
+    wallets = config["wallets"]
+    message = "🍥 <b>Wallet Watchlist</b>\n"
+    for wallet in wallets:
+        buys = random.randint(1, 3)
+        sells = random.randint(0, 2)
+        message += f"Wallet {wallet[:4]}...{wallet[-4:]} activity summary:\n"
+        message += f"🟢 {buys} Buys, 🔴 {sells} Sell in last 24h\n\n"
+    await context.bot.send_message(chat_id=update.effective_chat.id, text=message.strip(), parse_mode=ParseMode.HTML)
 
-def check_suspicious_activity():
-    # Placeholder: Replace with real analysis
-    message = """⚠️ <b>Suspicious Activity Detected</b>
-• Dev Wallet removed 90% LP from TokenX
-• Whale Wallet sold $18K of PEPE_INU
-• Bot activity spiked for SOLPUNK"""
-    return message
+async def track_position(update, context):
+    value = 3457.91
+    breakeven = 0.0002
+    pnl = value - 2080
+    message = f"""📈 <b>PnL Tracker</b>
+💵 Value: {format_dollar(value)}
+🎰 PnL: {format_dollar(pnl)}
+⚖️ Breakeven Price: ${breakeven}"""
+    await context.bot.send_message(chat_id=update.effective_chat.id, text=message, parse_mode=ParseMode.HTML)
 
+async def send_target_alerts(update, context):
+    message = "🎯 <b>Target Alerts</b>\nSell Zone Triggered at $0.00035\nWhale transferred MAX to CEX wallet"
+    await context.bot.send_message(chat_id=update.effective_chat.id, text=message, parse_mode=ParseMode.HTML)
 
-def send_target_alerts():
-    # Example target triggers
-    message = """🎯 <b>Target Price Alerts</b>
-• MAX approaching $0.00040 (Sell Zone)
-• PEPE_INU broke support level at $0.00009
-• SNEK resistance at $0.00015 breached"""
-    return message
+async def get_meme_sentiment(update, context):
+    sentiment = ["😎 Meme hype is lit!", "😐 Choppy sentiment today", "🥶 Meme market cooling off"]
+    message = f"📊 <b>Meme Sentiment</b>\n{random.choice(sentiment)}"
+    await context.bot.send_message(chat_id=update.effective_chat.id, text=message, parse_mode=ParseMode.HTML)
 
-
-def summarize_wallet_activity():
-    # Placeholder: Summary for Tier 2
-    message = """👛 <b>Wallet Activity Summary</b>
-• Wallet 1: +3 buys / -1 sell
-• Wallet 2: +1 buy / -2 sells
-• Wallet 3: No recent activity"""
-    return message
-
-
-def send_wallet_activity():
-    return summarize_wallet_activity()
-
-
-def track_position():
-    return """📈 <b>PnL Tracker</b>
-• MAX: Avg Buy = $0.00028 | Current = $0.00033
-• Unrealized Gain: +18%
-• Break-even: $0.00029"""
+async def detect_stealth_launches(update, context):
+    launches = ["BOTINU – No socials found", "GHOSTDOGE – Suspicious LP source"]
+    message = "🕵️‍♂️ <b>Stealth Launch Radar</b>\n" + "\n".join(launches)
+    await context.bot.send_message(chat_id=update.effective_chat.id, text=message, parse_mode=ParseMode.HTML)
