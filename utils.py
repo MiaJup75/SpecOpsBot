@@ -150,6 +150,16 @@ def get_pnl_report() -> str:
 <i>Last updated: Today</i>
 """
 
+def get_sentiment_scores() -> str:
+    return """<b>🧠 Meme Sentiment Scores</b>
+
+• $DUBI – 8.7/10 😍  
+• $ZAP – 6.1/10 😐  
+• $FAKE – 2.8/10 💩
+
+<i>Based on emoji density, TG spam, and tweet velocity</i>
+"""
+
 HELP_TEXT = """<b>🛠 Available Commands:</b>
 
 /max – View MAX token stats  
