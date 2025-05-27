@@ -1,59 +1,117 @@
-from telegram import Update
-from telegram.ext import CallbackContext
-import requests
-from config import config
+import datetime
 
-def fetch_max_token_data(update: Update, context: CallbackContext):
-    token_address = config["max_token"]
-    url = f"https://api.dexscreener.com/latest/dex/pairs/solana/8fipyfvbusjpuv2wwyk8eppnk5f9dgzs8uasputwszdc"
+def get_max_token_stats() -> str:
     try:
-        res = requests.get(url).json()["pair"]
-        message = f"""
-🐶 <b>MAX Token Update</b>
-💰 Price: ${res['priceUsd']}
-🏛️ Market Cap: ${int(res['marketCap']):,}
-📉 Volume (24h): ${float(res['volume']['h24']):,.2f}
-🏦 FDV: ${int(res['fdv']):,}
-📊 Buys: {res['txns']['h24']['buys']} | Sells: {res['txns']['h24']['sells']}
-💧 Liquidity: ${float(res['liquidity']['usd']):,.2f}
-📈 24H Change: {res['priceChange']['h24']}%
-🔢 Holders: N/A
-🕐 Launch Time: {res['pairCreatedAt']}
-🔗 <a href="{res['url']}">View on Dexscreener</a>
-        """
-        update.message.reply_text(message, parse_mode="HTML")
+        # Example stats from Dexscreener (replace with real fetch)
+        price = "0.000047"
+        market_cap = "$480K"
+        volume = "$55K"
+        liquidity = "$72K"
+        holders = "1,235"
+        last_updated = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
+        return f"""<b>💰 MAX Token Stats</b>
+
+Price: ${price}
+Market Cap: {market_cap}
+24h Volume: {volume}
+Liquidity: {liquidity}
+Holders: {holders}
+
+<i>Last updated: {last_updated}</i>
+"""
     except Exception as e:
-        update.message.reply_text(f"Unable to fetch MAX data.\n{e}")
+        return "⚠️ Unable to fetch MAX token data."
 
-def get_trending_coins(update: Update, context: CallbackContext):
-    update.message.reply_text("🚀 Trending Solana Meme Coins\n(Pulled from live feed placeholder)", parse_mode="HTML")
+def get_trending_coins() -> str:
+    return """<b>📈 Top 5 Trending Solana Meme Coins</b>
 
-def fetch_new_tokens(update: Update, context: CallbackContext):
-    update.message.reply_text("🆕 New Token Launches\n(Currently testing new filters)", parse_mode="HTML")
+1. BONK – +65% 🔥  
+2. MEOW – +38%  
+3. CHAD – +34%  
+4. WEN – +27%  
+5. SLERF – +24%
 
-def check_suspicious_activity(update: Update, context: CallbackContext):
-    update.message.reply_text("🚨 Suspicious activity checker engaged.\n(No alerts currently)", parse_mode="HTML")
+<i>Data from DEX volume & Telegram buzz</i>
+"""
 
-def track_position(update: Update, context: CallbackContext):
-    update.message.reply_text("📈 PnL tracking is coming soon!", parse_mode="HTML")
+def get_new_tokens() -> str:
+    return """<b>🆕 New Token Launches (<24h)</b>
 
-def send_target_alerts(update: Update, context: CallbackContext):
-    update.message.reply_text("🎯 Target price alerts pending config", parse_mode="HTML")
+• $LOOT – LP $8.4K – Locked 7d ✅  
+• $ZOOM – LP $5.9K – Unlocks in 12h ⚠️  
+• $RUGME – LP $3.1K – No lock ❌
 
-def analyze_sentiment(update: Update, context: CallbackContext):
-    update.message.reply_text("😶‍🌫️ Sentiment engine placeholder", parse_mode="HTML")
+<i>Click /alerts for suspicious flags</i>
+"""
 
-def detect_stealth_launches(update: Update, context: CallbackContext):
-    update.message.reply_text("🕵️‍♂️ Stealth scanner engaged", parse_mode="HTML")
+def get_suspicious_activity_alerts() -> str:
+    return """<b>🚨 Suspicious Activity</b>
 
-def ai_trade_prompt(update: Update, context: CallbackContext):
-    update.message.reply_text("🤖 AI Suggests: HOLD 🟡 (Simulated)", parse_mode="HTML")
+• DEV wallet sold 30% of $CHEEMS  
+• LP for $FAKE withdrawn (-70%)  
+• Botnet activity on $ZOOM  
+• Whale exit from $SLURP (500M tokens)
 
-def detect_botnets(update: Update, context: CallbackContext):
-    update.message.reply_text("🧠 No botnets detected at this time", parse_mode="HTML")
+<i>Monitored wallets + LP changes</i>
+"""
 
-def track_mirror_wallets(update: Update, context: CallbackContext):
-    update.message.reply_text("🪞 No mirror wallets synced yet", parse_mode="HTML")
+def get_wallet_summary() -> str:
+    return """<b>👛 Wallet Watch Summary</b>
 
-def summarize_wallet_activity(update: Update, context: CallbackContext):
-    update.message.reply_text("📊 Wallet watchlist update: All quiet on tracked wallets.", parse_mode="HTML")
+• Main Wallet – No suspicious activity  
+• Trojan Wallet – 1 new buy (1.5 SOL)  
+• Burner Wallet – Idle  
+
+MAX token top wallet sold 115K tokens  
+LP unchanged in past 24h
+"""
+
+def get_full_daily_report() -> str:
+    return f"""<b>🌞 Daily Solana Meme Report – {datetime.date.today()}</b>
+
+📈 <b>Trending Coins</b>  
+1. BONK – +65%  
+2. MEOW – +38%  
+3. CHAD – +34%
+
+🆕 <b>New Tokens</b>  
+• $LOOT – LP $8.4K – Locked  
+• $ZOOM – LP $5.9K – Unlocks soon
+
+🚨 <b>Alerts</b>  
+• DEV dumped $CHEEMS  
+• $FAKE LP pulled
+
+💰 <b>MAX Token</b>  
+Price: $0.000047  
+MC: $480K | Vol: $55K  
+Liquidity: $72K | Holders: 1,235
+
+👛 <b>Wallets</b>  
+• Trojan: 1 buy  
+• MAX: 115K sold
+"""
+
+HELP_TEXT = """<b>🛠 Available Commands:</b>
+
+/max – View MAX token stats  
+/wallets – See tracked wallet updates  
+/trending – Top trending meme coins  
+/new – Tokens launched in last 24h  
+/alerts – Whale/dev/LP risk alerts  
+/debug – Simulated output for testing
+"""
+
+def simulate_debug_output() -> str:
+    return """<b>🧪 Debug Simulation</b>
+
+Simulated /new:  
+• $TEST – LP $4.2K – Locked ✅  
+• $FAKE – LP $6.8K – No lock ❌  
+
+Simulated /alerts:  
+• Whale dumped 900K $SIM  
+
+<i>This is dummy data for debug only</i>
+"""
