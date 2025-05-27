@@ -26,4 +26,20 @@ def get_max_token_stats() -> str:
 
         dex_link = f"https://dexscreener.com/solana/{pair_address}"
 
-        return f"""<b>
+        return f"""
+<b>🐶 MAX Token Update</b>
+
+📈 <b>Price:</b> ${price}
+💰 <b>Market Cap:</b> ${market_cap:,.0f}
+🌿 <b>Volume (24h):</b> ${volume:,.2f}
+💵 <b>FDV:</b> ${fdv:,.0f}
+📊 <b>Buys:</b> {buys} | <b>Sells:</b> {sells}
+💧 <b>Liquidity:</b> ${liquidity:,.2f}
+🕒 <b>24H Change:</b> {change}%
+📅 <b>Launch Date:</b> {launch_date}
+🔗 <a href='{dex_link}'>View on Dexscreener</a>
+"""
+    except Exception as e:
+        return f"⚠️ Unable to fetch MAX token data."
+
+# Other command helpers (unchanged from previous utils.py) ...
