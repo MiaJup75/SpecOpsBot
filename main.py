@@ -168,7 +168,7 @@ def help_command(update: Update, context: CallbackContext) -> None:
 
 # Register handlers
 dispatcher.add_handler(CommandHandler("start", start))
-dispatcher.add_handler(CommandHandler("panel", panel_command))
+dispatcher.add_handler(CommandHandler("panel", lambda u,c: u.message.reply_text("Use /start for main menu", parse_mode=ParseMode.HTML)))
 dispatcher.add_handler(CommandHandler("max", lambda u, c: u.message.reply_text(get_max_token_stats(), parse_mode=ParseMode.HTML)))
 dispatcher.add_handler(CommandHandler("wallets", wallets_command))
 dispatcher.add_handler(CommandHandler("watch", watch_command))
