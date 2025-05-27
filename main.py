@@ -10,7 +10,6 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from flask import Flask, request
 import os
 
-# Enable logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -30,7 +29,7 @@ def get_main_keyboard():
         [InlineKeyboardButton("📈 Trending", callback_data='trending'),
          InlineKeyboardButton("🆕 New", callback_data='new')],
         [InlineKeyboardButton("🚨 Alerts", callback_data='alerts'),
-         InlineKeyboardButton("🧪 Debug", callback_data='debug')]
+         InlineKeyboardButton("📊 PnL", callback_data='pnl')]
     ])
 
 # --- Command Handlers --- #
@@ -67,7 +66,7 @@ def handle_callback(update: Update, context: CallbackContext) -> None:
         'trending': get_trending_coins,
         'new': get_new_tokens,
         'alerts': get_suspicious_activity_alerts,
-        'debug': simulate_debug_output
+        'pnl': get_pnl_report
     }
 
     result = func_map.get(command, lambda: "Unknown command")()
