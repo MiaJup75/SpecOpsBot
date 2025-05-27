@@ -78,7 +78,7 @@ Use the buttons below or type:
 /max /wallets /trending  
 /new /alerts /debug  
 /pnl /sentiment /tradeprompt /classify  
-/watch <wallet> /addtoken $TOKEN /tokens
+/watch &lt;wallet&gt; /addtoken $TOKEN /tokens
 
 Daily updates sent at 9AM Bangkok time (GMT+7)."""
     update.message.reply_text(welcome_text, reply_markup=get_main_keyboard(), parse_mode=ParseMode.HTML)
@@ -118,7 +118,7 @@ def handle_callback(update: Update, context: CallbackContext) -> None:
 def watch_command(update: Update, context: CallbackContext) -> None:
     try:
         if len(context.args) != 1:
-            update.message.reply_text("Usage: /watch <wallet_address>", parse_mode=ParseMode.HTML)
+            update.message.reply_text("Usage: /watch &lt;wallet_address&gt;", parse_mode=ParseMode.HTML)
             return
         address = context.args[0]
         label = f"Wallet {address[:4]}...{address[-4:]}"
