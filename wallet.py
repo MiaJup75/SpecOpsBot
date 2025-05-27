@@ -87,10 +87,6 @@ class Wallet:
             tx_bytes = base64.b64decode(tx_bytes_base64)
 
             # Step 3: Deserialize transaction and sign it
-            from solana.transaction import Transaction
-            from solana.rpc.api import Client
-            from solana.rpc.commitment import Confirmed
-
             transaction = Transaction.deserialize(tx_bytes)
             transaction.sign(self.keypair)
 
