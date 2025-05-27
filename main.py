@@ -18,7 +18,7 @@ from utils import (
 )
 from db import init_db, add_wallet, get_wallets, add_token, get_tokens, remove_wallet, remove_token
 from stealth_radar import fetch_new_tokens, filter_suspicious
-from price_alerts import check_price_targets  # <-- New import here
+from price_alerts import check_price_targets
 from mirror_watch import monitor_wallets
 from botnet import botnet_alerts
 
@@ -31,8 +31,6 @@ PORT = int(os.environ.get('PORT', 10000))
 app = Flask(__name__)
 updater = Updater(token=TOKEN, use_context=True)
 dispatcher: Dispatcher = updater.dispatcher
-
-# Command handler functions
 
 def start(update: Update, context: CallbackContext) -> None:
     update.message.reply_text(
@@ -267,4 +265,28 @@ def run_stealth_radar(bot):
         msg = (
             f"🚨 Suspicious new token detected!\n"
             f"Name: {token['name']}\n"
-            f"Liquidity: ${token['
+            f"Liquidity: ${token['liquidity']}\n"
+            f"Social Signals: {token['socialSignals']}\n"
+            f"Launch Time: {token['launchTime']}"
+        )
+        bot.send_message(chat_id=chat_id, text=msg)
+
+scheduler = BackgroundScheduler()
+for job in SCHEDULED_JOBS:
+    scheduler.add_job(job["func"], job["trigger"], **{k: v for k, v in job.items() if k not in ["func", "trigger"]})
+scheduler.start()
+
+@app.route('/')
+def index():
+    return "SolMadSpecBot is running."
+
+@app.route(f'/{TOKEN}', methods=['POST'])
+def webhook():
+    update = Update.de_json(request.get_json(force=True), updater.bot)
+    dispatcher.process_update(update)
+    return 'ok'
+
+if __name__ == '__main__':
+    init_db()
+    updater.bot.set_my_commands([BotCommand(cmd, data["desc"]) for cmd, data in COMMANDS.items()])
+    app.run(host='0.0.0.0', port=PORT)
