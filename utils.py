@@ -1,186 +1,180 @@
-import datetime
-import requests
+import logging
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ParseMode, BotCommand
+from telegram.ext import Updater, CommandHandler, CallbackContext, CallbackQueryHandler, Dispatcher
+from flask import Flask, request
+import os
 
-def get_max_token_stats() -> str:
+from utils import (
+    get_max_token_stats, get_trending_coins, get_new_tokens, get_suspicious_activity_alerts,
+    get_wallet_summary, get_full_daily_report, HELP_TEXT, simulate_debug_output,
+    get_pnl_report, get_sentiment_scores, get_trade_prompt, get_narrative_classification
+)
+from db import init_db, add_wallet, get_wallets, add_token, get_tokens
+from apscheduler.schedulers.background import BackgroundScheduler
+
+# Logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+TOKEN = os.getenv("BOT_TOKEN")
+PORT = int(os.environ.get('PORT', 10000))
+
+app = Flask(__name__)
+updater = Updater(token=TOKEN, use_context=True)
+dispatcher: Dispatcher = updater.dispatcher
+
+# --- Inline Keyboard --- #
+def get_main_keyboard():
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("💰 MAX", callback_data='max'),
+         InlineKeyboardButton("👛 Wallets", callback_data='wallets')],
+        [InlineKeyboardButton("📈 Trending", callback_data='trending'),
+         InlineKeyboardButton("🆕 New", callback_data='new')],
+        [InlineKeyboardButton("🚨 Alerts", callback_data='alerts'),
+         InlineKeyboardButton("📊 PnL", callback_data='pnl')],
+        [InlineKeyboardButton("➕ Add Wallet", switch_inline_query_current_chat='/watch '),
+         InlineKeyboardButton("➕ Add Token", switch_inline_query_current_chat='/addtoken $')],
+        [InlineKeyboardButton("📋 View Tokens", switch_inline_query_current_chat='/tokens')]
+    ])
+
+# --- Command Handlers --- #
+
+def start(update: Update, context: CallbackContext) -> None:
+    update.message.reply_text(
+        """<b>👋 Welcome to SolMadSpecBot!</b>
+
+Use the buttons below or type:
+/max /wallets /trending  
+/new /alerts /debug  
+/pnl /sentiment /tradeprompt /classify  
+/watch &lt;wallet&gt; /addtoken $TOKEN /tokens
+
+Daily updates sent at 9AM Bangkok time.""",
+        reply_markup=get_main_keyboard(),
+        parse_mode=ParseMode.HTML
+    )
+
+def panel_command(update: Update, context: CallbackContext) -> None:
+    update.message.reply_text(
+        "🔘 <b>SolMadSpecBot Panel</b>\nTap a button below:",
+        reply_markup=get_main_keyboard(),
+        parse_mode=ParseMode.HTML
+    )
+
+def handle_callback(update: Update, context: CallbackContext) -> None:
+    query = update.callback_query
+    query.answer()
+    command = query.data
+
+    func_map = {
+        'max': get_max_token_stats,
+        'wallets': get_wallet_summary,
+        'trending': get_trending_coins,
+        'new': get_new_tokens,
+        'alerts': get_suspicious_activity_alerts,
+        'pnl': get_pnl_report
+    }
+
+    result = func_map.get(command, lambda: "Unknown command")()
+    context.bot.send_message(chat_id=query.message.chat.id, text=result, parse_mode=ParseMode.HTML)
+
+def watch_command(update: Update, context: CallbackContext) -> None:
     try:
-        pair_address = "8fipyfvbusjpuv2wwyk8eppnk5f9dgzs8uasputwszdc"
-        url = f"https://api.dexscreener.com/latest/dex/pairs/solana/{pair_address}"
-        response = requests.get(url, timeout=5)
-        data = response.json()
-
-        if 'pair' not in data:
-            return "⚠️ MAX token data unavailable."
-
-        p = data['pair']
-        price = p['priceUsd']
-        market_cap = p['fdv']
-        volume = p['volume']['h24']
-        liquidity = p['liquidity']['usd']
-        last_updated = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-
-        return f"""<b>💰 MAX Token Stats</b>
-
-Price: ${price}
-Market Cap: ${int(market_cap):,}
-24h Volume: ${int(volume):,}
-Liquidity: ${int(liquidity):,}
-
-<i>Last updated: {last_updated}</i>
-"""
+        if len(context.args) != 1:
+            update.message.reply_text("Usage: /watch &lt;wallet_address&gt;", parse_mode=ParseMode.HTML)
+            return
+        address = context.args[0]
+        label = f"Wallet {address[:4]}...{address[-4:]}"
+        add_wallet(label, address)
+        update.message.reply_text(f"✅ Watching wallet:\n<code>{address}</code>", parse_mode=ParseMode.HTML)
     except Exception:
-        return "⚠️ Unable to fetch MAX token data."
+        update.message.reply_text("⚠️ Error adding wallet.")
 
-def get_trending_coins() -> str:
-    return """<b>📈 Top 5 Trending Solana Meme Coins</b>
+def wallets_command(update: Update, context: CallbackContext) -> None:
+    wallets = get_wallets()
+    if not wallets:
+        update.message.reply_text("No wallets being tracked.")
+        return
+    msg = "<b>👛 Watched Wallets</b>\n" + "\n".join([f"• {label}\n<code>{addr}</code>" for label, addr in wallets])
+    update.message.reply_text(msg, parse_mode=ParseMode.HTML)
 
-1. BONK – +65% 🔥  
-2. MEOW – +38%  
-3. CHAD – +34%  
-4. WEN – +27%  
-5. SLERF – +24%
+def addtoken_command(update: Update, context: CallbackContext) -> None:
+    try:
+        if len(context.args) != 1:
+            update.message.reply_text("Usage: /addtoken $TOKEN")
+            return
+        symbol = context.args[0].lstrip("$")
+        add_token(symbol)
+        update.message.reply_text(f"✅ Watching token: ${symbol.upper()}")
+    except Exception:
+        update.message.reply_text("⚠️ Error adding token.")
 
-<i>Data from DEX volume & Telegram buzz</i>
-"""
+def tokens_command(update: Update, context: CallbackContext) -> None:
+    tokens = get_tokens()
+    if not tokens:
+        update.message.reply_text("No tokens being watched.")
+        return
+    token_list = "\n".join([f"• ${t}" for t in tokens])
+    update.message.reply_text(f"<b>📋 Watched Tokens</b>\n{token_list}", parse_mode=ParseMode.HTML)
 
-def get_new_tokens() -> str:
-    return """<b>🆕 New Token Launches (&lt;24h)</b>
+# --- Register Command Handlers --- #
 
-• $LOOT – LP $8.4K – Locked 7d ✅  
-• $ZOOM – LP $5.9K – Unlocks in 12h ⚠️  
-• $RUGME – LP $3.1K – No lock ❌
+dispatcher.add_handler(CommandHandler("start", start))
+dispatcher.add_handler(CommandHandler("panel", panel_command))
+dispatcher.add_handler(CommandHandler("max", lambda u, c: u.message.reply_text(get_max_token_stats(), parse_mode=ParseMode.HTML)))
+dispatcher.add_handler(CommandHandler("wallets", wallets_command))
+dispatcher.add_handler(CommandHandler("watch", watch_command))
+dispatcher.add_handler(CommandHandler("addtoken", addtoken_command))
+dispatcher.add_handler(CommandHandler("tokens", tokens_command))
+dispatcher.add_handler(CommandHandler("trending", lambda u, c: u.message.reply_text(get_trending_coins(), parse_mode=ParseMode.HTML)))
+dispatcher.add_handler(CommandHandler("new", lambda u, c: u.message.reply_text(get_new_tokens(), parse_mode=ParseMode.HTML)))
+dispatcher.add_handler(CommandHandler("alerts", lambda u, c: u.message.reply_text(get_suspicious_activity_alerts(), parse_mode=ParseMode.HTML)))
+dispatcher.add_handler(CommandHandler("debug", lambda u, c: u.message.reply_text(simulate_debug_output(), parse_mode=ParseMode.HTML)))
+dispatcher.add_handler(CommandHandler("pnl", lambda u, c: u.message.reply_text(get_pnl_report(), parse_mode=ParseMode.HTML)))
+dispatcher.add_handler(CommandHandler("sentiment", lambda u, c: u.message.reply_text(get_sentiment_scores(), parse_mode=ParseMode.HTML)))
+dispatcher.add_handler(CommandHandler("tradeprompt", lambda u, c: u.message.reply_text(get_trade_prompt(), parse_mode=ParseMode.HTML)))
+dispatcher.add_handler(CommandHandler("classify", lambda u, c: u.message.reply_text(get_narrative_classification(), parse_mode=ParseMode.HTML)))
+dispatcher.add_handler(CommandHandler("help", lambda u, c: u.message.reply_text(HELP_TEXT, parse_mode=ParseMode.HTML)))
+dispatcher.add_handler(CallbackQueryHandler(handle_callback))
 
-<i>Click /alerts for suspicious flags</i>
-"""
+# --- Scheduler Job --- #
+def send_daily_report(bot):
+    chat_id = os.getenv("CHAT_ID")
+    report = get_full_daily_report()
+    bot.send_message(chat_id=chat_id, text=report, parse_mode=ParseMode.HTML)
 
-def get_suspicious_activity_alerts() -> str:
-    return """<b>🚨 Suspicious Activity</b>
+scheduler = BackgroundScheduler()
+scheduler.add_job(lambda: send_daily_report(dispatcher.bot), 'cron', hour=9, minute=0, timezone='Asia/Bangkok')
+scheduler.start()
 
-• DEV wallet sold 30% of $CHEEMS  
-• LP for $FAKE withdrawn (-70%)  
-• Botnet activity on $ZOOM  
-• Whale exit from $SLURP (500M tokens)
+# --- Webhook Setup --- #
+@app.route('/')
+def index():
+    return "SolMadSpecBot is running."
 
-<i>Monitored wallets + LP changes</i>
-"""
+@app.route(f'/{TOKEN}', methods=['POST'])
+def webhook():
+    update = Update.de_json(request.get_json(force=True), updater.bot)
+    dispatcher.process_update(update)
+    return 'ok'
 
-def get_wallet_summary() -> str:
-    return """<b>👛 Wallet Watch Summary</b>
-
-• Main Wallet – No suspicious activity  
-• Trojan Wallet – 1 new buy (1.5 SOL)  
-• Burner Wallet – Idle  
-
-MAX token top wallet sold 115K tokens  
-LP unchanged in past 24h
-"""
-
-def get_full_daily_report() -> str:
-    return f"""<b>🌞 Daily Solana Meme Report – {datetime.date.today()}</b>
-
-📈 <b>Trending Coins</b>  
-1. BONK – +65%  
-2. MEOW – +38%  
-3. CHAD – +34%
-
-🆕 <b>New Tokens</b>  
-• $LOOT – LP $8.4K – Locked  
-• $ZOOM – LP $5.9K – Unlocks soon
-
-🚨 <b>Alerts</b>  
-• DEV dumped $CHEEMS  
-• $FAKE LP pulled
-
-💰 <b>MAX Token</b>  
-{get_max_token_stats().replace('<b>', '').replace('</b>', '')}
-
-👛 <b>Wallets</b>  
-• Trojan: 1 buy  
-• MAX: 115K sold
-
-🧠 <b>Sentiment</b>  
-$DUBI – 8.7/10  
-$ZAP – 6.1/10  
-$FAKE – 2.8/10
-
-🤖 <b>Trade Prompt</b>  
-Watch $DUBI < $0.000021
-
-🔠 <b>Narratives</b>  
-$DUBI – Dubai  
-$ZAP – AI  
-$FAKE – None
-"""
-
-HELP_TEXT = """<b>🛠 Available Commands:</b>
-
-/max – View MAX token stats  
-/wallets – Wallet activity  
-/trending – Top meme coins  
-/new – New token launches  
-/alerts – Whale/dev/LP alerts  
-/pnl – MAX PnL  
-/sentiment – Meme scores  
-/tradeprompt – AI suggestions  
-/classify – Narrative tags  
-/debug – Simulated output
-"""
-
-def simulate_debug_output() -> str:
-    return """<b>🧪 Debug Simulation</b>
-
-Simulated /new:  
-• $TEST – LP $4.2K – Locked ✅  
-• $FAKE – LP $6.8K – No lock ❌  
-
-Simulated /alerts:  
-• Whale dumped 900K $SIM  
-
-<i>This is dummy data for debug only</i>
-"""
-
-def get_pnl_report() -> str:
-    buy_price = 0.0000335
-    current_price = 0.000047
-    holdings = 10_450_000
-    cost = buy_price * holdings
-    current_value = current_price * holdings
-    pnl = current_value - cost
-    pnl_pct = (pnl / cost) * 100
-
-    return f"""<b>💸 PnL Report – MAX Token</b>
-
-Bought: 10.45M @ ${buy_price:.8f}  
-Current: ${current_price:.8f}  
-Unrealized PnL: ${pnl:,.2f} ({pnl_pct:.1f}%)
-"""
-
-def get_sentiment_scores() -> str:
-    return """<b>🧠 Meme Sentiment Scores</b>
-
-$DUBI – 8.7/10 (Buzz + locked LP ✅)  
-$ZAP – 6.1/10 (Some whales, weak LP ⚠️)  
-$FAKE – 2.8/10 (Botnet & unlocked LP ❌)
-"""
-
-def get_trade_prompt() -> str:
-    return """<b>🤖 AI Trade Prompt</b>
-
-🟢 Consider watching $DUBI  
-• Entry < $0.000021  
-• Locked LP  
-• Whale inflows detected  
-• TG volume up 430%
-
-<i>Not financial advice</i>
-"""
-
-def get_narrative_classification() -> str:
-    return """<b>🔠 Narrative Classifier</b>
-
-$DUBI – Regional (Dubai Luxury)  
-$ZAP – Tech (AI / Smart Contracts)  
-$WOOF – Pets/Memes  
-$FAKE – None / Generic Risk
-
-<i>Helps identify viral categories early</i>
-"""
+# --- Run App --- #
+if __name__ == '__main__':
+    init_db()
+    updater.bot.set_my_commands([
+        BotCommand("start", "Show welcome message and buttons"),
+        BotCommand("max", "Show MAX token stats"),
+        BotCommand("wallets", "List all watched wallets"),
+        BotCommand("watch", "Add a new wallet to watch"),
+        BotCommand("addtoken", "Add a token to watch"),
+        BotCommand("tokens", "List all tracked tokens"),
+        BotCommand("trending", "View top trending meme coins"),
+        BotCommand("new", "Show new token launches"),
+        BotCommand("alerts", "Show whale/dev/suspicious alerts"),
+        BotCommand("pnl", "Check your MAX token PnL"),
+        BotCommand("sentiment", "See meme sentiment scores"),
+        BotCommand("tradeprompt", "AI-generated trade idea"),
+        BotCommand("classify", "Classify token narratives"),
+        BotCommand("debug", "Run simulated debug outputs")
+    ])
+    app.run(host='0.0.0.0', port=PORT)
