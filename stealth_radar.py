@@ -1,46 +1,37 @@
-import logging
 import requests
-import os
+import datetime
+from db import get_tokens
 
-logger = logging.getLogger(__name__)
-CHAT_ID = os.getenv("CHAT_ID")
+LAST_SCANNED = None
 
-def scan_stealth_launches(bot):
-    """
-    Scan for stealth launches:
-    - Tokens with low social signals
-    - Recent LP additions > $10k
-    - Volume spikes
-    """
+def fetch_new_tokens(since_minutes=30):
+    global LAST_SCANNED
+    now = datetime.datetime.utcnow()
+
+    # Use a timestamp or filter logic to fetch tokens launched within last ~30 mins
+    # For example, fetch from a token launch API, here is a placeholder:
+    url = "https://public-api.solscan.io/launchpad/recent"  # Hypothetical endpoint
     try:
-        # Example API endpoint or replace with your data source
-        url = "https://api.dexscreener.com/latest/dex/tokens/solana"
-        response = requests.get(url, timeout=10)
-        response.raise_for_status()
-        tokens = response.json().get("tokens", [])
-
-        stealth_candidates = []
-
-        for token in tokens:
-            lp = token.get("liquidityUSD", 0)
-            volume = token.get("volumeUSD24h", 0)
-            social_score = token.get("socialScore", 100)  # Hypothetical
-            age_minutes = token.get("ageMinutes", 99999)  # Hypothetical
-
-            # Criteria: LP > 10k, low social < 30, launched < 60 mins ago, volume spike > 5k
-            if lp > 10000 and social_score < 30 and age_minutes < 60 and volume > 5000:
-                stealth_candidates.append(token)
-
-        for token in stealth_candidates:
-            msg = (
-                f"🚨 <b>Stealth Launch Detected:</b> {token['symbol']}\n"
-                f"Liquidity: ${lp:,.0f}\n"
-                f"Volume(24h): ${volume:,.0f}\n"
-                f"Social Score: {social_score}\n"
-                f"Launched: {age_minutes} minutes ago"
-            )
-            logger.info(f"Stealth launch alert: {token['symbol']}")
-            bot.send_message(chat_id=CHAT_ID, text=msg, parse_mode="HTML")
-
+        resp = requests.get(url, timeout=10)
+        tokens = resp.json()
+        # Filter tokens launched after LAST_SCANNED time
+        new_tokens = []
+        for t in tokens:
+            launch_time = datetime.datetime.fromisoformat(t['launchTime'])
+            if not LAST_SCANNED or launch_time > LAST_SCANNED:
+                new_tokens.append(t)
+        LAST_SCANNED = now
+        return new_tokens
     except Exception as e:
-        logger.error(f"Error scanning stealth launches: {e}")
+        print(f"[StealthRadar] API fetch error: {e}")
+        return []
+
+def filter_suspicious(tokens):
+    suspicious = []
+    for token in tokens:
+        # Example suspicious criteria
+        if token['liquidity'] < 10000:
+            suspicious.append(token)
+        elif token['socialSignals'] < 5:
+            suspicious.append(token)
+    return suspicious
