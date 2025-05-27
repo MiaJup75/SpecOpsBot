@@ -1,66 +1,81 @@
 import os
 import datetime
 import requests
+from db import get_tokens
 
-MAX_TOKEN = {
-    "symbol": "MAX",
-    "pair": "8fipyfvbusjpuv2wwyk8eppnk5f9dgzs8uasputwszdc",
-    "avg_cost": 0.000028,
-    "target_price": 0.000050,
-    "mint_address": "EQbLvkkT8htw9uiC6AG4wwHEsmV4zHQkTNyF6yJDpump"
+WALLET_ADDRESS = "FWg4kXnm3BmgrymEFo7BTE6iwEqgzdy4owo4qzx8WBjH"
+
+# Optional: set avg cost + target for each token (customize as needed)
+TOKEN_OVERRIDES = {
+    "MAX": {
+        "pair": "8fipyfvbusjpuv2wwyk8eppnk5f9dgzs8uasputwszdc",
+        "mint": "EQbLvkkT8htw9uiC6AG4wwHEsmV4zHQkTNyF6yJDpump",
+        "avg_cost": 0.000028,
+        "target": 0.000050
+    },
+    "ZAZA": {
+        "pair": "fakezazazazazaza111",
+        "mint": "ZAZAZAZA123456789abcdef",
+        "avg_cost": 0.0015,
+        "target": 0.0020
+    }
+    # Add more tokens if needed
 }
 
-PHANTOM_WALLET = "FWg4kXnm3BmgrymEFo7BTE6iwEqgzdy4owo4qzx8WBjH"
-
-def get_max_balance():
-    url = f"https://public-api.solscan.io/account/tokens?account={PHANTOM_WALLET}"
-    headers = {"accept": "application/json"}
+def get_token_balance(mint_address):
+    url = f"https://public-api.solscan.io/account/tokens?account={WALLET_ADDRESS}"
     try:
-        r = requests.get(url, headers=headers, timeout=10)
-        tokens = r.json()
-        for token in tokens:
-            if token["tokenAddress"] == MAX_TOKEN["mint_address"]:
+        res = requests.get(url, timeout=10)
+        for token in res.json():
+            if token["tokenAddress"] == mint_address:
                 return float(token["tokenAmount"]["uiAmountString"])
     except Exception as e:
-        print(f"[Solscan Balance Error] {e}")
+        print(f"[Solscan Error] {e}")
     return 0.0
 
 def check_max_pnl(bot):
-    try:
-        held = get_max_balance()
-        url = f"https://api.dexscreener.com/latest/dex/pairs/solana/{MAX_TOKEN['pair']}"
-        res = requests.get(url, timeout=5)
-        data = res.json().get("pair", {})
+    tracked = get_tokens()
+    lines = ["<b>📊 Multi-Token PnL Summary</b>\n"]
+    any_data = False
 
-        price = float(data.get("priceUsd", 0))
-        cost = MAX_TOKEN["avg_cost"]
-        mcap = float(data.get("marketCap", 0))
-        lp = float(data.get("liquidity", {}).get("usd", 0))
-        volume = float(data.get("volume", {}).get("h24", 0))
+    for symbol in tracked:
+        data = TOKEN_OVERRIDES.get(symbol.upper())
+        if not data:
+            continue
 
-        pnl_pct = ((price - cost) / cost) * 100
-        est_value = price * held
-        target_hit = price >= MAX_TOKEN["target_price"]
+        pair = data["pair"]
+        mint = data["mint"]
+        avg_cost = data.get("avg_cost", 0.0)
+        target = data.get("target", 0.0)
 
-        text = f"""<b>📊 MAX Token PnL Tracker</b>
+        balance = get_token_balance(mint)
+        if balance == 0:
+            continue
 
-💰 <b>Holdings:</b> {held:,.0f} MAX  
-📉 <b>Avg Cost:</b> ${cost:.6f}  
-📈 <b>Current Price:</b> ${price:.6f}  
-🧮 <b>PnL:</b> {pnl_pct:+.2f}%  
-💼 <b>Est. Value:</b> ${est_value:,.2f}
+        try:
+            url = f"https://api.dexscreener.com/latest/dex/pairs/solana/{pair}"
+            r = requests.get(url, timeout=5)
+            info = r.json().get("pair", {})
+            price = float(info.get("priceUsd", 0))
+            mcap = float(info.get("marketCap", 0))
+            lp = float(info.get("liquidity", {}).get("usd", 0))
+            vol = float(info.get("volume", {}).get("h24", 0))
 
-🏷 <b>Market Cap:</b> ${mcap:,.0f}  
-💧 <b>Liquidity:</b> ${lp:,.0f}  
-🔁 <b>Volume:</b> ${volume:,.0f}
+            est = price * balance
+            pnl_pct = ((price - avg_cost) / avg_cost) * 100
 
-<i>Checked at {datetime.datetime.now().strftime('%H:%M:%S')}</i>
-"""
+            status = "🎯" if price >= target else ""
+            lines.append(f"""<b>${symbol}</b> – {pnl_pct:+.1f}% {status}  
+Est: ${est:,.0f} | P: ${price:.6f}  
+MC: ${mcap:,.0f} | LP: ${lp:,.0f} | Vol: ${vol:,.0f}\n""")
+            any_data = True
 
-        if target_hit:
-            text += f"\n\n🎯 <b>Target Reached:</b> ${price:.6f} ≥ ${MAX_TOKEN['target_price']:.6f}\n<b>Suggested Action:</b> Sell 2M MAX"
+        except Exception as e:
+            print(f"[PnL fetch error for {symbol}] {e}")
 
-        bot.send_message(chat_id=os.getenv("CHAT_ID"), text=text, parse_mode="HTML")
+    if not any_data:
+        return
 
-    except Exception as e:
-        print(f"[PnL Tracker Error] {e}")
+    lines.append(f"<i>Checked at {datetime.datetime.now().strftime('%H:%M:%S')}</i>")
+    msg = "\n".join(lines)
+    bot.send_message(chat_id=os.getenv("CHAT_ID"), text=msg, parse_mode="HTML")
