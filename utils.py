@@ -54,4 +54,14 @@ def get_trending_coins() -> str:
 <i>Data from DEX volume & Telegram buzz</i>
 """
 
+def get_new_tokens() -> str:
+    return """<b>🆕 New Token Launches (&lt;24h)</b>
+
+• $LOOT – LP $8.4K – Locked 7d ✅  
+• $ZOOM – LP $5.9K – Unlocks in 12h ⚠️  
+• $RUGME – LP $3.1K – No lock ❌
+
+<i>Click /alerts for suspicious flags</i>
+"""
+
 # Other command helpers (unchanged from previous utils.py) ...
