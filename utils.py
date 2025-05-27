@@ -86,4 +86,42 @@ MAX token top wallet sold 115K tokens
 LP unchanged in past 24h
 """
 
+def get_full_daily_report() -> str:
+    today = datetime.date.today()
+    return f"""<b>🌞 Daily Solana Meme Report – {today}</b>
+
+📈 <b>Trending Coins</b>  
+1. BONK – +65%  
+2. MEOW – +38%  
+3. CHAD – +34%
+
+🆕 <b>New Tokens</b>  
+• $LOOT – LP $8.4K – Locked  
+• $ZOOM – LP $5.9K – Unlocks soon
+
+🚨 <b>Alerts</b>  
+• DEV dumped $CHEEMS  
+• $FAKE LP pulled
+
+💰 <b>MAX Token</b>  
+{get_max_token_stats().replace('<b>', '').replace('</b>', '')}
+
+👛 <b>Wallets</b>  
+• Trojan: 1 buy  
+• MAX: 115K sold
+
+🧠 <b>Sentiment</b>  
+$DUBI – 8.7/10  
+$ZAP – 6.1/10  
+$FAKE – 2.8/10
+
+🤖 <b>Trade Prompt</b>  
+Watch $DUBI < $0.000021
+
+🔠 <b>Narratives</b>  
+$DUBI – Dubai  
+$ZAP – AI  
+$FAKE – None
+"""
+
 # Other command helpers (unchanged from previous utils.py) ...
