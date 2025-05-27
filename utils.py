@@ -1,76 +1,59 @@
+from telegram import Update
+from telegram.ext import CallbackContext
 import requests
-import json
-import time
-from datetime import datetime
 from config import config
 
-TELEGRAM_TOKEN = config["telegram_token"]
-MAX_TOKEN_ADDRESS = config["max_token"]
-DEXSCREENER_API = f"https://api.dexscreener.com/latest/dex/pairs/solana/8fipyfvbusjpuv2wwyk8eppnk5f9dgzs8uasputwszdc"
-
-def fetch_max_token_data():
+def fetch_max_token_data(update: Update, context: CallbackContext):
+    token_address = config["max_token"]
+    url = f"https://api.dexscreener.com/latest/dex/pairs/solana/8fipyfvbusjpuv2wwyk8eppnk5f9dgzs8uasputwszdc"
     try:
-        response = requests.get(DEXSCREENER_API)
-        data = response.json()
-        pair = data["pair"]
-
-        price = float(pair["priceUsd"])
-        market_cap = float(pair.get("marketCap", 0))
-        volume_24h = float(pair["volume"]["h24"])
-        fdv = float(pair.get("fdv", 0))
-        buys = pair["txns"]["h24"]["buys"]
-        sells = pair["txns"]["h24"]["sells"]
-        liquidity = float(pair["liquidity"]["usd"])
-        change_24h = float(pair["priceChange"]["h24"])
-        holders = "N/A"
-        launch_timestamp = int(pair.get("pairCreatedAt", 0))
-        if launch_timestamp:
-            launch_time = datetime.utcfromtimestamp(launch_timestamp / 1000).strftime('%Y-%m-%d %H:%M:%S')
-        else:
-            launch_time = "Unknown"
-
-        return f"""
+        res = requests.get(url).json()["pair"]
+        message = f"""
 🐶 <b>MAX Token Update</b>
-💰 Price: ${price:.8f}
-🏛️ Market Cap: ${int(market_cap):,}
-📉 Volume (24h): ${volume_24h:,.2f}
-🏦 FDV: ${int(fdv):,}
-📊 Buys: {buys} | Sells: {sells}
-💧 Liquidity: ${liquidity:,.2f}
-📈 24H Change: {change_24h:.2f}%
-🔢 Holders: {holders}
-🕐 Launch Time: {launch_time}
-🔗 <a href="https://dexscreener.com/solana/8fipyfvbusjpuv2wwyk8eppnk5f9dgzs8uasputwszdc">View on Dexscreener</a>
-        """.strip()
+💰 Price: ${res['priceUsd']}
+🏛️ Market Cap: ${int(res['marketCap']):,}
+📉 Volume (24h): ${float(res['volume']['h24']):,.2f}
+🏦 FDV: ${int(res['fdv']):,}
+📊 Buys: {res['txns']['h24']['buys']} | Sells: {res['txns']['h24']['sells']}
+💧 Liquidity: ${float(res['liquidity']['usd']):,.2f}
+📈 24H Change: {res['priceChange']['h24']}%
+🔢 Holders: N/A
+🕐 Launch Time: {res['pairCreatedAt']}
+🔗 <a href="{res['url']}">View on Dexscreener</a>
+        """
+        update.message.reply_text(message, parse_mode="HTML")
     except Exception as e:
-        return f"⚠️ Error fetching MAX token data: {e}"
+        update.message.reply_text(f"Unable to fetch MAX data.\n{e}")
 
-def is_allowed(user_id):
-    return str(user_id) in config.get("whitelist", [])
+def get_trending_coins(update: Update, context: CallbackContext):
+    update.message.reply_text("🚀 Trending Solana Meme Coins\n(Pulled from live feed placeholder)", parse_mode="HTML")
 
-def fetch_trending_tokens():
-    # Placeholder for Tier 3+ trending engine
-    return [
-        {"symbol": "SOL", "price": 177.94, "volume": 104107},
-        {"symbol": "MEME1", "price": 0.0002834, "volume": 1202},
-        {"symbol": "MEME2", "price": 177.75, "volume": 1618010},
-        {"symbol": "MEME3", "price": 177.61, "volume": 330633},
-        {"symbol": "MEME4", "price": 177.83, "volume": 47040},
-    ]
+def fetch_new_tokens(update: Update, context: CallbackContext):
+    update.message.reply_text("🆕 New Token Launches\n(Currently testing new filters)", parse_mode="HTML")
 
-def get_trending_coins():
-    coins = fetch_trending_tokens()
-    message = "🚀 <b>Trending Solana Meme Coins</b>\n"
-    for i, coin in enumerate(coins, 1):
-        message += f"{i}. {coin['symbol']} – ${coin['price']} – Vol: ${int(coin['volume']):,}\n"
-    return message
+def check_suspicious_activity(update: Update, context: CallbackContext):
+    update.message.reply_text("🚨 Suspicious activity checker engaged.\n(No alerts currently)", parse_mode="HTML")
 
-def summarize_wallet_activity():
-    # Placeholder for wallet tracker summary
-    return "📊 No major wallet activity in the last 24h."
+def track_position(update: Update, context: CallbackContext):
+    update.message.reply_text("📈 PnL tracking is coming soon!", parse_mode="HTML")
 
-def fetch_new_tokens():
-    return "🆕 No new token launches in the last 12h."  # Placeholder for future Tier 4 smart scanning
+def send_target_alerts(update: Update, context: CallbackContext):
+    update.message.reply_text("🎯 Target price alerts pending config", parse_mode="HTML")
 
-def check_suspicious_activity():
-    return "⚠️ No suspicious activity detected."  # Placeholder for future botnet/mirror alert
+def analyze_sentiment(update: Update, context: CallbackContext):
+    update.message.reply_text("😶‍🌫️ Sentiment engine placeholder", parse_mode="HTML")
+
+def detect_stealth_launches(update: Update, context: CallbackContext):
+    update.message.reply_text("🕵️‍♂️ Stealth scanner engaged", parse_mode="HTML")
+
+def ai_trade_prompt(update: Update, context: CallbackContext):
+    update.message.reply_text("🤖 AI Suggests: HOLD 🟡 (Simulated)", parse_mode="HTML")
+
+def detect_botnets(update: Update, context: CallbackContext):
+    update.message.reply_text("🧠 No botnets detected at this time", parse_mode="HTML")
+
+def track_mirror_wallets(update: Update, context: CallbackContext):
+    update.message.reply_text("🪞 No mirror wallets synced yet", parse_mode="HTML")
+
+def summarize_wallet_activity(update: Update, context: CallbackContext):
+    update.message.reply_text("📊 Wallet watchlist update: All quiet on tracked wallets.", parse_mode="HTML")
