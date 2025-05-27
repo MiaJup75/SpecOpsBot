@@ -124,4 +124,21 @@ $ZAP – AI
 $FAKE – None
 """
 
+HELP_TEXT = """<b>🛠 Available Commands:</b>
+
+/max – View MAX token stats  
+/wallets – See tracked wallet updates  
+/trending – Top trending meme coins  
+/new – Tokens launched in last 24h  
+/alerts – Whale/dev/LP risk alerts  
+/debug – Simulated output for testing  
+/pnl – Show MAX token break-even stats  
+/sentiment – Emoji/meme score for trending tokens  
+/tradeprompt – Smart suggestion based on wallet activity  
+/classify – Tag token narratives using AI  
+/watch – Add wallet to your watchlist  
+/addtoken – Track a token on your list  
+/tokens – Show tracked token list
+"""
+
 # Other command helpers (unchanged from previous utils.py) ...
