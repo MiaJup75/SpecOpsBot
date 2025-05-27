@@ -160,6 +160,19 @@ def get_sentiment_scores() -> str:
 <i>Based on emoji density, TG spam, and tweet velocity</i>
 """
 
+def get_trade_prompt() -> str:
+    return """<b>📈 AI Trade Prompt</b>
+
+🧠 Trend: Bullish  
+🔎 Trigger: Wallet ABC bought 2.1 SOL of $ZAZA  
+📉 Support: 0.000024 | 📈 Target: 0.000038
+
+Suggested Entry: 0.000027
+Risk Level: Medium
+
+<i>Backtested against mirror wallet clusters</i>
+"""
+
 HELP_TEXT = """<b>🛠 Available Commands:</b>
 
 /max – View MAX token stats  
