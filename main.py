@@ -1,145 +1,202 @@
 import logging
-import json
 from flask import Flask, request
-from telegram import Bot, Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Dispatcher, CommandHandler
+from telegram import Bot, Update, BotCommand
+from telegram.ext import Dispatcher, CommandHandler, CallbackContext
 from apscheduler.schedulers.background import BackgroundScheduler
 from utils import (
     fetch_max_token_data,
-    is_allowed,
-    get_trending_coins,
-    get_new_tokens,
+    fetch_new_tokens,
     check_suspicious_activity,
-    get_wallet_activity,
+    fetch_trending_tokens,
+    summarize_wallet_activity,
+    track_position,
+    get_pnl,
+    set_target_price,
+    check_target_price,
+    suggest_gas_timing,
+    sentiment_score
 )
-
-# Load config
-with open("config.json") as f:
-    config = json.load(f)
-
-TOKEN = config["telegram_token"]
-WHITELIST = config.get("whitelist", [])
-bot = Bot(token=TOKEN)
-app = Flask(__name__)
-scheduler = BackgroundScheduler()
+from config import config
+import pytz
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-dispatcher = Dispatcher(bot, None, use_context=True)
+TOKEN = config["telegram_token"]
+bot = Bot(token=TOKEN)
 
-# Command handlers
-def start(update: Update, context):
-    if not is_allowed(update.effective_user.id):
-        return
-    keyboard = [
-        [InlineKeyboardButton("MAX Token", callback_data="/max")],
-        [InlineKeyboardButton("Wallets", callback_data="/wallets")],
-        [InlineKeyboardButton("Trending", callback_data="/trending")],
-        [InlineKeyboardButton("New Tokens", callback_data="/new")],
-        [InlineKeyboardButton("Suspicious Alerts", callback_data="/alerts")],
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    message = (
-        "<b>Welcome to SolMadSpecBot!</b>\n\n"
-        "Available Commands:\n"
-        "/max – View MAX token data\n"
-        "/wallets – Track tagged wallet activity\n"
-        "/trending – Top trending meme coins\n"
-        "/new – Newly launched Sol tokens\n"
-        "/alerts – Suspicious activity alerts\n"
-    )
+app = Flask(__name__)
+dp = Dispatcher(bot, None, workers=1, use_context=True)
+
+# --- Command Handlers ---
+
+def start(update: Update, context: CallbackContext):
+    message = """<b>Welcome to SolMadSpecBot!</b>
+🤖 Your crypto companion on Solana
+
+Available commands:
+/max – MAX Token Stats
+/trending – Top SOL meme coins
+/new – Freshly launched tokens
+/alerts – Suspicious token activity
+/wallets – Top wallet movement
+/track – Track your buy position
+/pnl – Check your token profit/loss
+/settarget – Set a sell alert
+/gas – Best timing to buy/sell
+/sentiment – Meme market mood
+/stealths – Stealth launch radar"""
     context.bot.send_message(
         chat_id=update.effective_chat.id,
         text=message,
-        reply_markup=reply_markup,
         parse_mode="HTML"
     )
 
-def help_command(update: Update, context):
-    return start(update, context)
+dp.add_handler(CommandHandler("start", start))
 
-def max_command(update: Update, context):
-    if not is_allowed(update.effective_user.id):
-        return
+def max(update: Update, context: CallbackContext):
     message = fetch_max_token_data()
-    update.message.reply_text(message, parse_mode="HTML")
+    context.bot.send_message(
+        chat_id=update.effective_chat.id,
+        text=message,
+        parse_mode="HTML"
+    )
 
-def trending_command(update: Update, context):
-    if not is_allowed(update.effective_user.id):
-        return
-    message = get_trending_coins()
-    update.message.reply_text(message, parse_mode="HTML")
+dp.add_handler(CommandHandler("max", max))
 
-def new_command(update: Update, context):
-    if not is_allowed(update.effective_user.id):
-        return
-    message = get_new_tokens()
-    update.message.reply_text(message, parse_mode="HTML")
+def trending(update: Update, context: CallbackContext):
+    message = fetch_trending_tokens()
+    context.bot.send_message(
+        chat_id=update.effective_chat.id,
+        text=message,
+        parse_mode="HTML"
+    )
 
-def alerts_command(update: Update, context):
-    if not is_allowed(update.effective_user.id):
-        return
+dp.add_handler(CommandHandler("trending", trending))
+
+def new(update: Update, context: CallbackContext):
+    message = fetch_new_tokens()
+    context.bot.send_message(
+        chat_id=update.effective_chat.id,
+        text=message,
+        parse_mode="HTML"
+    )
+
+dp.add_handler(CommandHandler("new", new))
+
+def alerts(update: Update, context: CallbackContext):
     message = check_suspicious_activity()
-    update.message.reply_text(message, parse_mode="HTML")
+    context.bot.send_message(
+        chat_id=update.effective_chat.id,
+        text=message,
+        parse_mode="HTML"
+    )
 
-def wallets_command(update: Update, context):
-    if not is_allowed(update.effective_user.id):
-        return
-    message = get_wallet_activity()
-    update.message.reply_text(message, parse_mode="HTML")
+dp.add_handler(CommandHandler("alerts", alerts))
 
-# Callback from buttons
-def handle_button(update: Update, context):
-    data = update.callback_query.data
-    update.callback_query.answer()
-    update.message = update.callback_query.message
-    if data == "/max":
-        max_command(update, context)
-    elif data == "/wallets":
-        wallets_command(update, context)
-    elif data == "/trending":
-        trending_command(update, context)
-    elif data == "/new":
-        new_command(update, context)
-    elif data == "/alerts":
-        alerts_command(update, context)
+def wallets(update: Update, context: CallbackContext):
+    message = summarize_wallet_activity()
+    context.bot.send_message(
+        chat_id=update.effective_chat.id,
+        text=message,
+        parse_mode="HTML"
+    )
 
-# Register handlers
-dispatcher.add_handler(CommandHandler("start", start))
-dispatcher.add_handler(CommandHandler("help", help_command))
-dispatcher.add_handler(CommandHandler("max", max_command))
-dispatcher.add_handler(CommandHandler("wallets", wallets_command))
-dispatcher.add_handler(CommandHandler("trending", trending_command))
-dispatcher.add_handler(CommandHandler("new", new_command))
-dispatcher.add_handler(CommandHandler("alerts", alerts_command))
-dispatcher.add_handler(CommandHandler("help", help_command))
-dispatcher.add_handler(CommandHandler("start", start))
-dispatcher.add_handler(CommandHandler("start", start))
-dispatcher.add_handler(CommandHandler("start", start))
+dp.add_handler(CommandHandler("wallets", wallets))
 
-# Daily 9AM report
+def track(update: Update, context: CallbackContext):
+    try:
+        token, amount, price = context.args
+        track_position(update.effective_user.id, token.upper(), float(amount), float(price))
+        update.message.reply_text(f"Tracking {amount} {token.upper()} at ${price}")
+    except:
+        update.message.reply_text("Usage: /track [TOKEN] [AMOUNT] [BUY_PRICE]")
+
+dp.add_handler(CommandHandler("track", track))
+
+def pnl(update: Update, context: CallbackContext):
+    try:
+        token, current_price = context.args
+        message = get_pnl(update.effective_user.id, token.upper(), float(current_price))
+        update.message.reply_text(message)
+    except:
+        update.message.reply_text("Usage: /pnl [TOKEN] [CURRENT_PRICE]")
+
+dp.add_handler(CommandHandler("pnl", pnl))
+
+def set_target(update: Update, context: CallbackContext):
+    try:
+        token, price = context.args
+        set_target_price(update.effective_user.id, token.upper(), float(price))
+        update.message.reply_text(f"🎯 Target set for {token.upper()} at ${price}")
+    except:
+        update.message.reply_text("Usage: /settarget [TOKEN] [TARGET_PRICE]")
+
+dp.add_handler(CommandHandler("settarget", set_target))
+
+def gas(update: Update, context: CallbackContext):
+    update.message.reply_text(suggest_gas_timing())
+
+dp.add_handler(CommandHandler("gas", gas))
+
+def sentiment(update: Update, context: CallbackContext):
+    update.message.reply_text(sentiment_score())
+
+dp.add_handler(CommandHandler("sentiment", sentiment))
+
+def stealths(update: Update, context: CallbackContext):
+    update.message.reply_text("🕵️‍♂️ No recent stealth launches detected.\n(Live scanning coming soon.)")
+
+dp.add_handler(CommandHandler("stealths", stealths))
+
+# --- Daily Scheduler ---
+
 def send_daily_report():
-    for user in WHITELIST:
+    for user_id in config["whitelist"]:
         try:
-            bot.send_message(chat_id=user, text="<b>📊 Daily Report (placeholder)</b>", parse_mode="HTML")
+            bot.send_message(
+                chat_id=user_id,
+                text="<b>📊 Daily Report (placeholder)</b>",
+                parse_mode="HTML"
+            )
         except Exception as e:
-            logger.warning(f"Failed to send daily report: {e}")
+            logging.error(f"Failed to send daily report to {user_id}: {e}")
 
-scheduler.add_job(send_daily_report, "cron", hour=9, timezone="Asia/Bangkok")
+scheduler = BackgroundScheduler(timezone=pytz.timezone("Asia/Bangkok"))
+scheduler.add_job(send_daily_report, "cron", hour=9)
 scheduler.start()
 
-@app.route("/")
-def index():
-    return "OK"
+# --- Webhook Endpoint ---
 
-@app.route("/hook", methods=["POST"])
+@app.route(f"/{TOKEN}", methods=["POST"])
 def webhook():
     update = Update.de_json(request.get_json(force=True), bot)
-    dispatcher.process_update(update)
-    return "OK"
+    dp.process_update(update)
+    return "ok"
+
+@app.route("/", methods=["GET", "HEAD"])
+def index():
+    return "SolMadSpecBot is live."
+
+# --- Bot Commands for Telegram Menu ---
+
+bot.set_my_commands([
+    BotCommand("start", "Start the bot"),
+    BotCommand("max", "MAX Token Stats"),
+    BotCommand("trending", "Top SOL meme coins"),
+    BotCommand("new", "New tokens <24h"),
+    BotCommand("alerts", "Suspicious token activity"),
+    BotCommand("wallets", "Wallet Tracker Summary"),
+    BotCommand("track", "Track token buy position"),
+    BotCommand("pnl", "Check your PnL"),
+    BotCommand("settarget", "Set a sell alert"),
+    BotCommand("gas", "Gas-efficient timing"),
+    BotCommand("sentiment", "Meme market sentiment"),
+    BotCommand("stealths", "Stealth launch radar")
+])
+
+# --- Run the bot ---
 
 if __name__ == "__main__":
     logging.info("Running SolMadSpecBot...")
-    bot.set_webhook(url="https://solmad-spec-bot.onrender.com/hook")
     app.run(host="0.0.0.0", port=10000)
