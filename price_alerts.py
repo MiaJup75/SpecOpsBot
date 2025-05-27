@@ -1,49 +1,36 @@
+import logging
 import os
 import requests
-from db import get_tokens
 
-BOT_TOKEN = os.getenv("BOT_TOKEN")
+logger = logging.getLogger(__name__)
 CHAT_ID = os.getenv("CHAT_ID")
 
-PRICE_TARGETS = {
-    # Example: "TOKEN_SYMBOL": {"buy": 0.00002, "sell": 0.00005}
-    "MAX": {"sell": 0.00005},
-    # Add more as needed
+# Example price alert targets; in practice, store user configs in DB
+PRICE_ALERTS = {
+    "BONK": 0.0001,
+    "MEOW": 0.00005,
+    "CHAD": 0.0002,
 }
 
-def get_token_price(pair_id):
-    url = f"https://api.dexscreener.com/latest/dex/pairs/solana/{pair_id}"
-    try:
-        r = requests.get(url, timeout=5)
-        pair = r.json().get("pair", {})
-        return float(pair.get("priceUsd", 0))
-    except Exception as e:
-        print(f"[PriceAlerts] Error fetching price for {pair_id}: {e}")
-        return 0
+DEXSCREENER_API = "https://api.dexscreener.com/latest/dex/tokens/solana"
 
-def check_price_triggers(bot):
-    tokens = get_tokens()
-    for symbol in tokens:
-        symbol = symbol.upper()
-        target = PRICE_TARGETS.get(symbol)
-        if not target:
-            continue
+def check_price_alerts(bot):
+    """
+    Checks current prices against alert thresholds and notifies users.
+    """
+    for symbol, target in PRICE_ALERTS.items():
+        try:
+            url = f"{DEXSCREENER_API}/{symbol.lower()}"
+            response = requests.get(url)
+            response.raise_for_status()
+            data = response.json()
+            price = float(data.get("priceUsd", 0))
 
-        # For demo, using hardcoded pair mapping; ideally load from config/db
-        pair_id = {
-            "MAX": "8fipyfvbusjpuv2wwyk8eppnk5f9dgzs8uasputwszdc"
-        }.get(symbol)
+            if price >= target:
+                message = f"🔔 <b>Price Alert:</b> ${symbol} has reached target price ${target}\n" \
+                          f"Current price: ${price:.6f}"
+                logger.info(f"Price Alert triggered for {symbol} at price {price}")
+                bot.send_message(chat_id=CHAT_ID, text=message, parse_mode="HTML")
 
-        if not pair_id:
-            continue
-
-        price = get_token_price(pair_id)
-        if price == 0:
-            continue
-
-        if "sell" in target and price >= target["sell"]:
-            msg = f"📢 <b>Price Alert:</b> {symbol} has reached SELL target price ${price:.6f}!"
-            bot.send_message(chat_id=CHAT_ID, text=msg, parse_mode="HTML")
-            print(f"[PriceAlerts] Sell alert sent for {symbol} at {price}")
-
-        # Add buy target alert logic similarly if desired
+        except Exception as e:
+            logger.error(f"Error checking price alert for {symbol}: {e}")
