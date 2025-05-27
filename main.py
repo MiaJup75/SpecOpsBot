@@ -3,6 +3,7 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ParseMo
 from telegram.ext import Updater, CommandHandler, CallbackContext, CallbackQueryHandler, Dispatcher
 from flask import Flask, request
 import os
+import pytz  # ✅ ADDED for timezone support
 
 from utils import (
     get_max_token_stats, get_trending_coins, get_new_tokens, get_suspicious_activity_alerts,
@@ -142,9 +143,9 @@ def send_daily_report(bot):
     report = get_full_daily_report()
     bot.send_message(chat_id=chat_id, text=report, parse_mode=ParseMode.HTML)
 
-scheduler = BackgroundScheduler()
-scheduler.add_job(lambda: send_daily_report(dispatcher.bot), 'cron', hour=9, minute=0, timezone='Asia/Bangkok')
-scheduler.add_job(lambda: scan_new_tokens(dispatcher.bot), 'interval', minutes=5)  # ✅ NEW SCANNER JOB
+scheduler = BackgroundScheduler(timezone=pytz.timezone("Asia/Bangkok"))  # ✅ FIXED
+scheduler.add_job(lambda: send_daily_report(dispatcher.bot), 'cron', hour=9, minute=0)
+scheduler.add_job(lambda: scan_new_tokens(dispatcher.bot), 'interval', minutes=5)
 scheduler.start()
 
 # --- Webhook Setup --- #
