@@ -1,6 +1,4 @@
 import logging
-import pytz
-import datetime
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ParseMode, BotCommand
 from telegram.ext import Updater, CommandHandler, CallbackContext, CallbackQueryHandler, Dispatcher
 from flask import Flask, request
@@ -11,53 +9,39 @@ from utils import (
     get_wallet_summary, get_full_daily_report, HELP_TEXT, simulate_debug_output,
     get_pnl_report, get_sentiment_scores, get_trade_prompt, get_narrative_classification
 )
-from db import init_db, add_wallet, get_wallets, add_token, get_tokens, remove_token, remove_wallet
+from db import init_db, add_wallet, get_wallets, add_token, get_tokens, remove_token
+from wallet import Wallet  # your wallet class handling trade execution
 from apscheduler.schedulers.background import BackgroundScheduler
 
-from stealth_scanner import scan_new_tokens
-from price_alerts import check_price_triggers
-from mirror_watch import mirror_wallets
-from botnet import botnet_alerts
-from gastime import fetch_recent_gas_prices  # Gas timing module
-
-# New imports for auto trading
-from wallet import Wallet
-from trade import get_swap_routes, execute_swap
-
+# Logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 TOKEN = os.getenv("BOT_TOKEN")
 PORT = int(os.environ.get('PORT', 10000))
-BURNER_SECRET_KEY_B64 = os.getenv("BURNER_SECRET_KEY_B64")
 
 app = Flask(__name__)
 updater = Updater(token=TOKEN, use_context=True)
 dispatcher: Dispatcher = updater.dispatcher
 
-bangkok_tz = pytz.timezone('Asia/Bangkok')
+# Initialize your Wallet instance (loads burner key from env internally)
+wallet = Wallet()
 
-wallet = Wallet(BURNER_SECRET_KEY_B64) if BURNER_SECRET_KEY_B64 else None
-
+# --- Inline Keyboard --- #
 def get_main_keyboard():
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("🏠 Start", callback_data='start'),
-         InlineKeyboardButton("❓ Help", callback_data='help')],
         [InlineKeyboardButton("💰 MAX", callback_data='max'),
          InlineKeyboardButton("👛 Wallets", callback_data='wallets')],
         [InlineKeyboardButton("📈 Trending", callback_data='trending'),
          InlineKeyboardButton("🆕 New", callback_data='new')],
         [InlineKeyboardButton("🚨 Alerts", callback_data='alerts'),
          InlineKeyboardButton("📊 PnL", callback_data='pnl')],
-        [InlineKeyboardButton("🔍 Meme Sentiment Score", callback_data='sentiment'),
-         InlineKeyboardButton("🗂️ Meme Classification", callback_data='classify')],
         [InlineKeyboardButton("➕ Add Wallet", switch_inline_query_current_chat='/watch '),
-         InlineKeyboardButton("➖ Remove Wallet", switch_inline_query_current_chat='/removewallet ')],
-        [InlineKeyboardButton("➕ Add Token", switch_inline_query_current_chat='/addtoken $'),
-         InlineKeyboardButton("❌ Remove Token", switch_inline_query_current_chat='/removetoken $')],
-        [InlineKeyboardButton("📋 View Tokens", switch_inline_query_current_chat='/tokens')],
-        [InlineKeyboardButton("🔘 Panel", callback_data='panel')]
+         InlineKeyboardButton("➕ Add Token", switch_inline_query_current_chat='/addtoken $')],
+        [InlineKeyboardButton("📋 View Tokens", switch_inline_query_current_chat='/tokens')]
     ])
+
+# --- Command Handlers --- #
 
 def start(update: Update, context: CallbackContext) -> None:
     update.message.reply_text(
@@ -67,48 +51,12 @@ Use the buttons below or type:
 /max /wallets /trending  
 /new /alerts /debug  
 /pnl /sentiment /tradeprompt /classify  
-/watch &lt;wallet&gt; /addtoken $TOKEN /tokens /gastime /autobuy
+/watch &lt;wallet&gt; &lt;nickname&gt; /addtoken $TOKEN /remove_token $TOKEN /tokens /autobuy $TOKEN AMOUNT
 
 Daily updates sent at 9AM Bangkok time (GMT+7).""",
         reply_markup=get_main_keyboard(),
         parse_mode=ParseMode.HTML
     )
-
-def help_command(update: Update, context: CallbackContext) -> None:
-    update.message.reply_text(HELP_TEXT, parse_mode=ParseMode.HTML)
-
-def gastime_command(update: Update, context: CallbackContext) -> None:
-    msg = fetch_recent_gas_prices()
-    update.message.reply_text(msg, parse_mode=ParseMode.HTML)
-
-def autobuy_command(update: Update, context: CallbackContext) -> None:
-    if not wallet:
-        update.message.reply_text("⚠️ Auto trading wallet not configured.", parse_mode=ParseMode.HTML)
-        return
-
-    if len(context.args) < 2:
-        update.message.reply_text("Usage: /autobuy $TOKEN <amount>", parse_mode=ParseMode.HTML)
-        return
-
-    token_symbol = context.args[0].lstrip("$").upper()
-    amount_str = context.args[1]
-    try:
-        amount = float(amount_str)
-        # TODO: Replace with actual mint address lookup or DB mapping
-        token_mint = "So11111111111111111111111111111111111111112"  # Example mint (SOL)
-        lamports_amount = int(amount * 1e9)
-
-        routes = get_swap_routes(input_mint="So11111111111111111111111111111111111111112",  # USDC mint for example
-                                 output_mint=token_mint,
-                                 amount=lamports_amount)
-        if not routes or not routes.get("data"):
-            update.message.reply_text(f"⚠️ No swap routes found for {token_symbol}.", parse_mode=ParseMode.HTML)
-            return
-
-        result = execute_swap(routes["data"][0])
-        update.message.reply_text(f"Simulated swap executed for {token_symbol} {amount} SOL.\nResult: {result['status']}", parse_mode=ParseMode.HTML)
-    except Exception as e:
-        update.message.reply_text(f"Error processing swap: {e}", parse_mode=ParseMode.HTML)
 
 def panel_command(update: Update, context: CallbackContext) -> None:
     update.message.reply_text(
@@ -123,17 +71,12 @@ def handle_callback(update: Update, context: CallbackContext) -> None:
     command = query.data
 
     func_map = {
-        'start': lambda: "Use the buttons or type commands. Tap /help for assistance.",
-        'help': lambda: HELP_TEXT,
         'max': get_max_token_stats,
         'wallets': get_wallet_summary,
         'trending': get_trending_coins,
         'new': get_new_tokens,
         'alerts': get_suspicious_activity_alerts,
-        'pnl': get_pnl_report,
-        'sentiment': get_sentiment_scores,
-        'classify': get_narrative_classification,
-        'panel': lambda: "Panel opened."
+        'pnl': get_pnl_report
     }
 
     result = func_map.get(command, lambda: "Unknown command")()
@@ -141,14 +84,15 @@ def handle_callback(update: Update, context: CallbackContext) -> None:
 
 def watch_command(update: Update, context: CallbackContext) -> None:
     try:
-        if len(context.args) < 2:
-            update.message.reply_text("Usage: /watch <nickname> <wallet_address>", parse_mode=ParseMode.HTML)
+        if len(context.args) < 1:
+            update.message.reply_text("Usage: /watch <wallet_address> [nickname]", parse_mode=ParseMode.HTML)
             return
-        label = context.args[0]
-        address = context.args[1]
+        address = context.args[0]
+        label = " ".join(context.args[1:]) if len(context.args) > 1 else f"Wallet {address[:4]}...{address[-4:]}"
         add_wallet(label, address)
-        update.message.reply_text(f"✅ Watching wallet:\n<b>{label}</b>\n<code>{address}</code>", parse_mode=ParseMode.HTML)
-    except Exception:
+        update.message.reply_text(f"✅ Watching wallet:\n<code>{address}</code> as \"{label}\"", parse_mode=ParseMode.HTML)
+    except Exception as e:
+        logger.error(f"Error in /watch: {e}")
         update.message.reply_text("⚠️ Error adding wallet.")
 
 def wallets_command(update: Update, context: CallbackContext) -> None:
@@ -159,27 +103,29 @@ def wallets_command(update: Update, context: CallbackContext) -> None:
     msg = "<b>👛 Watched Wallets</b>\n" + "\n".join([f"• {label}\n<code>{addr}</code>" for label, addr in wallets])
     update.message.reply_text(msg, parse_mode=ParseMode.HTML)
 
-def removewallet_command(update: Update, context: CallbackContext) -> None:
-    try:
-        if len(context.args) != 1:
-            update.message.reply_text("Usage: /removewallet <nickname>", parse_mode=ParseMode.HTML)
-            return
-        label = context.args[0]
-        remove_wallet(label)
-        update.message.reply_text(f"✅ Removed wallet: <b>{label}</b>", parse_mode=ParseMode.HTML)
-    except Exception:
-        update.message.reply_text("⚠️ Error removing wallet.")
-
 def addtoken_command(update: Update, context: CallbackContext) -> None:
     try:
         if len(context.args) != 1:
             update.message.reply_text("Usage: /addtoken $TOKEN")
             return
-        symbol = context.args[0].lstrip("$")
+        symbol = context.args[0].lstrip("$").upper()
         add_token(symbol)
         update.message.reply_text(f"✅ Watching token: ${symbol.upper()}")
-    except Exception:
+    except Exception as e:
+        logger.error(f"Error in /addtoken: {e}")
         update.message.reply_text("⚠️ Error adding token.")
+
+def removetoken_command(update: Update, context: CallbackContext) -> None:
+    try:
+        if len(context.args) != 1:
+            update.message.reply_text("Usage: /remove_token $TOKEN")
+            return
+        symbol = context.args[0].lstrip("$").upper()
+        remove_token(symbol)
+        update.message.reply_text(f"✅ Removed token: ${symbol}")
+    except Exception as e:
+        logger.error(f"Error in /remove_token: {e}")
+        update.message.reply_text("⚠️ Error removing token.")
 
 def tokens_command(update: Update, context: CallbackContext) -> None:
     tokens = get_tokens()
@@ -189,62 +135,65 @@ def tokens_command(update: Update, context: CallbackContext) -> None:
     token_list = "\n".join([f"• ${t}" for t in tokens])
     update.message.reply_text(f"<b>📋 Watched Tokens</b>\n{token_list}", parse_mode=ParseMode.HTML)
 
-def removetoken_command(update: Update, context: CallbackContext) -> None:
+def autobuy_command(update: Update, context: CallbackContext) -> None:
     try:
-        if len(context.args) != 1:
-            update.message.reply_text("Usage: /removetoken $TOKEN")
+        if len(context.args) != 2:
+            update.message.reply_text("Usage: /autobuy $TOKEN AMOUNT")
             return
-        symbol = context.args[0].lstrip("$")
-        remove_token(symbol)
-        update.message.reply_text(f"✅ Removed token: ${symbol.upper()}")
-    except Exception:
-        update.message.reply_text("⚠️ Error removing token.")
 
-# Register Command Handlers
+        symbol = context.args[0].lstrip("$").upper()
+        amount = float(context.args[1])
+
+        tokens = get_tokens()
+        if symbol not in tokens:
+            update.message.reply_text(f"⚠️ Token ${symbol} is not in the watchlist. Add it using /addtoken.")
+            return
+
+        result = wallet.buy_token(symbol, amount)
+        update.message.reply_text(result)
+    except Exception as e:
+        logger.error(f"Error in /autobuy: {e}")
+        update.message.reply_text(f"⚠️ Error executing /autobuy: {e}")
+
+def debug_command(update: Update, context: CallbackContext) -> None:
+    update.message.reply_text(simulate_debug_output(), parse_mode=ParseMode.HTML)
+
+def help_command(update: Update, context: CallbackContext) -> None:
+    update.message.reply_text(HELP_TEXT, parse_mode=ParseMode.HTML)
+
+# --- Register Command Handlers --- #
+
 dispatcher.add_handler(CommandHandler("start", start))
-dispatcher.add_handler(CommandHandler("help", help_command))
-dispatcher.add_handler(CommandHandler("gastime", gastime_command))
-dispatcher.add_handler(CommandHandler("autobuy", autobuy_command))
 dispatcher.add_handler(CommandHandler("panel", panel_command))
 dispatcher.add_handler(CommandHandler("max", lambda u, c: u.message.reply_text(get_max_token_stats(), parse_mode=ParseMode.HTML)))
 dispatcher.add_handler(CommandHandler("wallets", wallets_command))
-dispatcher.add_handler(CommandHandler("removewallet", removewallet_command))
 dispatcher.add_handler(CommandHandler("watch", watch_command))
 dispatcher.add_handler(CommandHandler("addtoken", addtoken_command))
-dispatcher.add_handler(CommandHandler("removetoken", removetoken_command))
+dispatcher.add_handler(CommandHandler("remove_token", removetoken_command))
 dispatcher.add_handler(CommandHandler("tokens", tokens_command))
 dispatcher.add_handler(CommandHandler("trending", lambda u, c: u.message.reply_text(get_trending_coins(), parse_mode=ParseMode.HTML)))
 dispatcher.add_handler(CommandHandler("new", lambda u, c: u.message.reply_text(get_new_tokens(), parse_mode=ParseMode.HTML)))
 dispatcher.add_handler(CommandHandler("alerts", lambda u, c: u.message.reply_text(get_suspicious_activity_alerts(), parse_mode=ParseMode.HTML)))
-dispatcher.add_handler(CommandHandler("debug", lambda u, c: u.message.reply_text(simulate_debug_output(), parse_mode=ParseMode.HTML)))
+dispatcher.add_handler(CommandHandler("debug", debug_command))
 dispatcher.add_handler(CommandHandler("pnl", lambda u, c: u.message.reply_text(get_pnl_report(), parse_mode=ParseMode.HTML)))
 dispatcher.add_handler(CommandHandler("sentiment", lambda u, c: u.message.reply_text(get_sentiment_scores(), parse_mode=ParseMode.HTML)))
 dispatcher.add_handler(CommandHandler("tradeprompt", lambda u, c: u.message.reply_text(get_trade_prompt(), parse_mode=ParseMode.HTML)))
 dispatcher.add_handler(CommandHandler("classify", lambda u, c: u.message.reply_text(get_narrative_classification(), parse_mode=ParseMode.HTML)))
+dispatcher.add_handler(CommandHandler("autobuy", autobuy_command))
+dispatcher.add_handler(CommandHandler("help", help_command))
 dispatcher.add_handler(CallbackQueryHandler(handle_callback))
 
+# --- Scheduler Job --- #
 def send_daily_report(bot):
     chat_id = os.getenv("CHAT_ID")
     report = get_full_daily_report()
     bot.send_message(chat_id=chat_id, text=report, parse_mode=ParseMode.HTML)
 
-last_mirror_check = datetime.datetime.utcnow()
-
-def scheduled_mirror_wallets():
-    global last_mirror_check
-    mirror_wallets(updater.bot, last_mirror_check.timestamp())
-    last_mirror_check = datetime.datetime.utcnow()
-
 scheduler = BackgroundScheduler()
-
-scheduler.add_job(lambda: send_daily_report(updater.bot), 'cron', hour=9, minute=0, timezone=bangkok_tz)
-scheduler.add_job(lambda: scan_new_tokens(updater.bot), 'interval', minutes=5, timezone=bangkok_tz)
-scheduler.add_job(lambda: check_price_triggers(updater.bot), 'interval', minutes=7, timezone=bangkok_tz)
-scheduler.add_job(scheduled_mirror_wallets, 'interval', minutes=6, timezone=bangkok_tz)
-scheduler.add_job(lambda: botnet_alerts(updater.bot), 'interval', minutes=8, timezone=bangkok_tz)
-
+scheduler.add_job(lambda: send_daily_report(dispatcher.bot), 'cron', hour=9, minute=0, timezone='Asia/Bangkok')
 scheduler.start()
 
+# --- Webhook Setup --- #
 @app.route('/')
 def index():
     return "SolMadSpecBot is running."
@@ -255,28 +204,26 @@ def webhook():
     dispatcher.process_update(update)
     return 'ok'
 
+# --- Run App --- #
 if __name__ == '__main__':
     init_db()
     updater.bot.set_my_commands([
         BotCommand("start", "Show welcome message and buttons"),
-        BotCommand("help", "Show help information"),
-        BotCommand("gastime", "Show recent Solana gas fees and timing suggestions"),
-        BotCommand("autobuy", "Simulate or execute token swap"),
         BotCommand("max", "Show MAX token stats"),
         BotCommand("wallets", "List all watched wallets"),
-        BotCommand("removewallet", "Remove a wallet by nickname"),
         BotCommand("watch", "Add a new wallet to watch"),
         BotCommand("addtoken", "Add a token to watch"),
-        BotCommand("removetoken", "Remove a tracked token"),
+        BotCommand("remove_token", "Remove a token from watchlist"),
         BotCommand("tokens", "List all tracked tokens"),
         BotCommand("trending", "View top trending meme coins"),
         BotCommand("new", "Show new token launches"),
         BotCommand("alerts", "Show whale/dev/suspicious alerts"),
-        BotCommand("debug", "Run simulated debug outputs"),
         BotCommand("pnl", "Check your MAX token PnL"),
-        BotCommand("sentiment", "Show Meme Sentiment Score"),
+        BotCommand("sentiment", "See meme sentiment scores"),
         BotCommand("tradeprompt", "AI-generated trade idea"),
-        BotCommand("classify", "Meme Classification"),
-        BotCommand("panel", "Show the bot command panel")
+        BotCommand("classify", "Classify token narratives"),
+        BotCommand("autobuy", "Buy tokens automatically"),
+        BotCommand("debug", "Run simulated debug outputs"),
+        BotCommand("help", "Show this help message")
     ])
     app.run(host='0.0.0.0', port=PORT)
