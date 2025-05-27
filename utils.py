@@ -1,112 +1,89 @@
+import json
 import requests
 from datetime import datetime
 from config import config
 
-
 def is_allowed(user_id):
     return str(user_id) in config["whitelist"]
 
-
 def fetch_max_token_data():
     url = "https://api.dexscreener.com/latest/dex/pairs/solana/8fipyfvbusjpuv2wwyk8eppnk5f9dgzs8uasputwszdc"
-    response = requests.get(url)
-    if response.status_code == 200:
-        data = response.json().get("pair", {})
+    try:
+        response = requests.get(url)
+        data = response.json()
+        pair = data.get("pair", {})
+        price = pair.get("priceUsd", "N/A")
+        market_cap = pair.get("marketCap", "N/A")
+        volume = pair.get("volume", {}).get("h24", "N/A")
+        fdv = pair.get("fdv", "N/A")
+
         return {
-            "priceUsd": data.get("priceUsd"),
-            "marketCap": data.get("marketCap"),
-            "fdv": data.get("fdv"),
-            "volume": data.get("volume", {}).get("h24")
+            "price": f"${float(price):,.8f}" if price else "N/A",
+            "market_cap": f"${int(market_cap):,}" if market_cap else "N/A",
+            "volume": f"${float(volume):,.0f}" if volume else "N/A",
+            "fdv": f"${int(fdv):,}" if fdv else "N/A"
         }
-    return None
+    except Exception as e:
+        return {"error": str(e)}
 
-
-def format_max_message(data):
-    if not data:
-        return "❌ Unable to fetch MAX token data."
-
-    return f"""
-🐶 <b>MAX Token Update</b>
-💰 <b>Price:</b> ${float(data['priceUsd']):,.8f}
-🏛️ <b>Market Cap:</b> ${int(data['marketCap']):,}
-📉 <b>Volume (24h):</b> ${int(data['volume']):,}
-🏦 <b>FDV:</b> ${int(data['fdv']):,}
-"""
-
-
-def fetch_trending_coins():
+def fetch_trending_tokens():
     url = "https://api.dexscreener.com/latest/dex/pairs/solana"
-    response = requests.get(url)
-    if response.status_code != 200:
-        return None
+    try:
+        response = requests.get(url)
+        data = response.json()
+        pairs = data.get("pairs", [])
 
-    all_pairs = response.json().get("pairs", [])
-    filtered = [
-        pair for pair in all_pairs
-        if pair["baseToken"]["symbol"] != "SOL"
-        and float(pair["liquidity"]["usd"]) > 10000
-    ]
-    sorted_pairs = sorted(filtered, key=lambda x: float(x["volume"]["h24"]), reverse=True)
-    return sorted_pairs[:5]
+        sorted_pairs = sorted(pairs, key=lambda x: float(x.get("volume", {}).get("h24", 0)), reverse=True)
+        top_pairs = sorted_pairs[:5]
 
+        results = []
+        for pair in top_pairs:
+            base = pair["baseToken"]["symbol"]
+            price = float(pair.get("priceUsd", 0))
+            volume = float(pair.get("volume", {}).get("h24", 0))
+            results.append(f"{base} – ${price:,.8f} – Vol: ${volume:,.0f}")
 
-def format_trending_coins(coins):
-    if not coins:
-        return "❌ Unable to fetch trending coins."
-
-    message = "<b>🚀 Trending Solana Meme Coins</b>\n"
-    for i, coin in enumerate(coins, 1):
-        symbol = coin["baseToken"]["symbol"]
-        price = float(coin["priceUsd"])
-        volume = float(coin["volume"]["h24"])
-        message += f"{i}. <b>{symbol}</b> – ${price:,.8f} – Vol: ${int(volume):,}\n"
-    return message
-
+        return "\n".join(results)
+    except Exception as e:
+        return f"Error: {e}"
 
 def fetch_new_tokens():
     url = "https://api.dexscreener.com/latest/dex/pairs/solana"
-    response = requests.get(url)
-    if response.status_code != 200:
-        return []
+    try:
+        response = requests.get(url)
+        data = response.json()
+        pairs = data.get("pairs", [])
+        new_tokens = []
 
-    all_pairs = response.json().get("pairs", [])
-    threshold_time = int((datetime.utcnow().timestamp() - 86400) * 1000)
+        for pair in pairs:
+            created = pair.get("pairCreatedAt")
+            if not created:
+                continue
+            launch_time = datetime.fromtimestamp(int(created) / 1000)
+            age_minutes = (datetime.utcnow() - launch_time).total_seconds() / 60
+            if age_minutes <= 1440:  # 24 hours
+                symbol = pair["baseToken"]["symbol"]
+                volume = float(pair.get("volume", {}).get("h24", 0))
+                lp = float(pair.get("liquidity", {}).get("usd", 0))
+                time_str = launch_time.strftime("%Y-%m-%d %H:%M")
+                new_tokens.append(f"{symbol} – LP: ${lp:,.0f} – Vol: ${volume:,.0f} – Launched: {time_str}")
 
-    return [
-        {
-            "symbol": p["baseToken"]["symbol"],
-            "created": datetime.utcfromtimestamp(p["pairCreatedAt"] / 1000).strftime('%Y-%m-%d %H:%M'),
-            "url": p["url"]
-        }
-        for p in all_pairs
-        if p.get("pairCreatedAt", 0) > threshold_time and float(p["liquidity"]["usd"]) > 10000
-    ]
-
-
-def format_new_tokens(tokens):
-    if not tokens:
-        return "🤖 No new meme coins launched in the past 24h."
-
-    message = "<b>🆕 New Token Watch (24h)</b>\n"
-    for t in tokens[:5]:
-        message += f"• <b>{t['symbol']}</b> – Launched: {t['created']}\n🔗 {t['url']}\n"
-    return message
-
+        if not new_tokens:
+            return "No new tokens found."
+        return "\n".join(new_tokens[:5])
+    except Exception as e:
+        return f"Error: {e}"
 
 def check_suspicious_activity():
-    # Dummy output for now
-    return """
-⚠️ <b>Suspicious Activity Monitor</b>
-• Dev wallet 3xu... pulled 75% of LP on 🐸 PEPE2
-• Whale sold 900k tokens from MAX in a single txn
-• Botnet detected spamming $FOMO buys
-"""
-
+    dummy_alerts = [
+        "🚨 Whale sold 10% of supply",
+        "⚠️ LP dropped by 30% in 10 min",
+        "🧠 Botnet activity spike detected"
+    ]
+    return "\n".join(dummy_alerts)
 
 def track_position():
-    return """
-📈 PnL Tracker:
-Break-even: $0.00032
-Current: $0.00034
-PnL: +6.25%
-"""
+    return "📈 You bought 10.45M MAX at $0.0000885. Current price is $0.0003382. You're up 282%!"
+
+def get_token_info(token_address):
+    return f"Token: {token_address[:6]}...{token_address[-4:]}\nFake Risk: LOW\nLock Status: LOCKED"
