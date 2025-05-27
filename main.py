@@ -1,107 +1,99 @@
+
 import logging
-from telegram import Bot, Update, ParseMode
+from telegram import Bot, Update
 from telegram.ext import CommandHandler, Dispatcher, Updater
 from flask import Flask, request
+import os
 import json
-from utils import fetch_max_token_data, get_trending_coins, is_allowed, get_new_tokens, get_alerts, get_wallet_activity
 from apscheduler.schedulers.background import BackgroundScheduler
 from pytz import timezone
+from utils import (
+    fetch_max_token_data,
+    get_trending_coins,
+    is_allowed,
+    get_new_tokens,
+    check_suspicious_activity,
+    format_wallet_alerts
+)
 
-with open("config.json") as f:
-    config = json.load(f)
-
-TOKEN = config["telegram_token"]
+logging.basicConfig(level=logging.INFO)
+TOKEN = os.getenv("TELEGRAM_BOT_TOKEN") or json.load(open("config.json"))["telegram_token"]
 bot = Bot(token=TOKEN)
 app = Flask(__name__)
 updater = Updater(token=TOKEN, use_context=True)
-dispatcher = updater.dispatcher
+dispatcher: Dispatcher = updater.dispatcher
+scheduler = BackgroundScheduler(timezone=timezone("Asia/Bangkok"))
 
-# Commands
-def max_command(update: Update, context):
-    if not is_allowed(update.effective_user.id):
-        return
-    price, market_cap, volume, fdv = fetch_max_token_data()
-    message = f"""🐶 <b>MAX Token Update</b>
-💰 Price: ${price:.8f}
-🏛️ Market Cap: ${market_cap:,.0f}
-📉 Volume (24h): ${volume:,.0f}
-🏦 FDV: ${fdv:,.0f}"""
-    context.bot.send_message(chat_id=update.effective_chat.id, text=message, parse_mode=ParseMode.HTML)
+def start(update: Update, context):
+    update.message.reply_text("🤖 Welcome to SolMadSpecBot!\nUse /max, /trending, /alerts, /wallets, /new")
 
-def trending_command(update: Update, context):
-    if not is_allowed(update.effective_user.id):
+def max(update: Update, context):
+    data = fetch_max_token_data()
+    if not data:
+        update.message.reply_text("⚠️ MAX token data currently unavailable.")
         return
+    msg = f'''
+🐶 <b>MAX Token Update</b>
+💰 Price: ${data["priceUsd"]}
+🏛️ Market Cap: ${data["marketCap"]}
+📉 Volume (24h): ${data["volume"]}
+📈 FDV: ${data["fdv"]}
+📊 Buys/Sells: {data["txns"]["h24"]["buys"]}/{data["txns"]["h24"]["sells"]}
+👥 Holders: {data.get("holders", "N/A")}
+💧 Liquidity: ${data["liquidity"]["usd"]}
+📆 Launch Age: {data.get("launchAge", "N/A")}
+🔗 <a href="https://dexscreener.com/solana/8fipyfvbusjpuv2wwyk8eppnk5f9dgzs8uasputwszdc">View on Dexscreener</a>
+'''.strip()
+    context.bot.send_message(chat_id=update.effective_chat.id, text=msg, parse_mode='HTML')
+
+def trending(update: Update, context):
     trending = get_trending_coins()
-    message = "🚀 <b>Trending Solana Meme Coins</b>\n"
+    if not trending:
+        update.message.reply_text("No trending coins found.")
+        return
+    msg = "🚀 <b>Trending Solana Meme Coins</b>\n"
     for i, coin in enumerate(trending, 1):
-        message += f"{i}. {coin['name']} – ${coin['price']} – Vol: ${coin['volume']:,}\n"
-    context.bot.send_message(chat_id=update.effective_chat.id, text=message, parse_mode=ParseMode.HTML)
+        msg += f"{i}. {coin['symbol']} – ${coin['priceUsd']} – Vol: ${coin['volume']}\n"
+    update.message.reply_text(msg.strip(), parse_mode="HTML")
 
-def new_command(update: Update, context):
-    if not is_allowed(update.effective_user.id):
-        return
+def alerts(update: Update, context):
+    alerts = check_suspicious_activity()
+    msg = alerts if alerts else "No suspicious activity detected."
+    update.message.reply_text(msg)
+
+def wallets(update: Update, context):
+    alert_summary = format_wallet_alerts()
+    update.message.reply_text(alert_summary or "No wallet alerts at this time.")
+
+def new(update: Update, context):
     tokens = get_new_tokens()
-    message = "🆕 <b>New Meme Coins (last 12h)</b>\n"
-    if not tokens:
-        message += "No new tokens found."
-    context.bot.send_message(chat_id=update.effective_chat.id, text=message, parse_mode=ParseMode.HTML)
+    msg = tokens if tokens else "No new token launches detected."
+    update.message.reply_text(msg)
 
-def alerts_command(update: Update, context):
-    if not is_allowed(update.effective_user.id):
-        return
-    alerts = get_alerts()
-    message = "⚠️ <b>Suspicious Activity Alerts</b>\n"
-    if not alerts:
-        message += "No alerts found."
-    context.bot.send_message(chat_id=update.effective_chat.id, text=message, parse_mode=ParseMode.HTML)
+def send_daily_report():
+    for user_id in json.load(open("config.json"))["whitelist"]:
+        bot.send_message(chat_id=user_id, text="<b>📊 Daily Report (placeholder)</b>", parse_mode="HTML")
 
-def wallets_command(update: Update, context):
-    if not is_allowed(update.effective_user.id):
-        return
-    activity = get_wallet_activity()
-    message = "👛 <b>Tracked Wallet Activity</b>\n"
-    if not activity:
-        message += "No recent activity."
-    context.bot.send_message(chat_id=update.effective_chat.id, text=message, parse_mode=ParseMode.HTML)
-
-@app.route(f"/{TOKEN}", methods=["POST"])
+@app.route("/hook", methods=["POST"])
 def webhook():
     update = Update.de_json(request.get_json(force=True), bot)
     dispatcher.process_update(update)
-    return "OK"
+    return "ok"
 
-def send_daily_report():
-    message = "<b>📊 Daily Report (placeholder)</b>\nSummary stats here."
-    for user_id in config["whitelist"]:
-        bot.send_message(chat_id=user_id, text=message, parse_mode=ParseMode.HTML)
+@app.route("/", methods=["GET"])
+def home():
+    return "✅ SolMadSpecBot is running."
 
-# Register commands
-dispatcher.add_handler(CommandHandler("max", max_command))
-dispatcher.add_handler(CommandHandler("trending", trending_command))
-dispatcher.add_handler(CommandHandler("new", new_command))
-dispatcher.add_handler(CommandHandler("alerts", alerts_command))
-dispatcher.add_handler(CommandHandler("wallets", wallets_command))
+dispatcher.add_handler(CommandHandler("start", start))
+dispatcher.add_handler(CommandHandler("max", max))
+dispatcher.add_handler(CommandHandler("trending", trending))
+dispatcher.add_handler(CommandHandler("alerts", alerts))
+dispatcher.add_handler(CommandHandler("wallets", wallets))
+dispatcher.add_handler(CommandHandler("new", new))
 
-# Scheduler
-scheduler = BackgroundScheduler(timezone=timezone("Asia/Bangkok"))
 scheduler.add_job(send_daily_report, "cron", hour=9)
 scheduler.start()
 
-# Pinned welcome message
-for user_id in config["whitelist"]:
-    bot.send_message(
-        chat_id=user_id,
-        text=(
-            "<b>🤖 Welcome to SolMadSpecBot!</b>\n"
-            "Use /max to check MAX token status.\n"
-            "Use /trending to view top Solana meme coins.\n"
-            "Use /new for new token launches.\n"
-            "Use /alerts to view dev/LP alerts.\n"
-            "Use /wallets to monitor key wallets."
-        ),
-        parse_mode=ParseMode.HTML
-    )
-
-logging.basicConfig(level=logging.INFO)
-print("🔄 Starting webhook server...")
-app.run(host="0.0.0.0", port=10000)
+if __name__ == "__main__":
+    bot.set_webhook(url="https://solmad-spec-bot.onrender.com/hook")
+    app.run(host="0.0.0.0", port=10000)
