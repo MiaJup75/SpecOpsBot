@@ -2,24 +2,38 @@ import os
 import datetime
 import requests
 
-# MAX config (could be adapted to any token in future)
 MAX_TOKEN = {
     "symbol": "MAX",
     "pair": "8fipyfvbusjpuv2wwyk8eppnk5f9dgzs8uasputwszdc",
     "avg_cost": 0.000028,
-    "holdings": 10_450_000,
     "target_price": 0.000050,
+    "mint_address": "EQbLvkkT8htw9uiC6AG4wwHEsmV4zHQkTNyF6yJDpump"
 }
+
+PHANTOM_WALLET = "FWg4kXnm3BmgrymEFo7BTE6iwEqgzdy4owo4qzx8WBjH"
+
+def get_max_balance():
+    url = f"https://public-api.solscan.io/account/tokens?account={PHANTOM_WALLET}"
+    headers = {"accept": "application/json"}
+    try:
+        r = requests.get(url, headers=headers, timeout=10)
+        tokens = r.json()
+        for token in tokens:
+            if token["tokenAddress"] == MAX_TOKEN["mint_address"]:
+                return float(token["tokenAmount"]["uiAmountString"])
+    except Exception as e:
+        print(f"[Solscan Balance Error] {e}")
+    return 0.0
 
 def check_max_pnl(bot):
     try:
+        held = get_max_balance()
         url = f"https://api.dexscreener.com/latest/dex/pairs/solana/{MAX_TOKEN['pair']}"
         res = requests.get(url, timeout=5)
         data = res.json().get("pair", {})
 
         price = float(data.get("priceUsd", 0))
         cost = MAX_TOKEN["avg_cost"]
-        held = MAX_TOKEN["holdings"]
         mcap = float(data.get("marketCap", 0))
         lp = float(data.get("liquidity", {}).get("usd", 0))
         volume = float(data.get("volume", {}).get("h24", 0))
