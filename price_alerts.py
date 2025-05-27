@@ -1,41 +1,23 @@
-import logging
-import os
-import requests
 from db import get_tokens
+import requests
+import os
 
-logger = logging.getLogger(__name__)
-CHAT_ID = os.getenv("CHAT_ID")
-
-# Default target prices if not set per token
-DEFAULT_TARGET_PRICE = 0.00005
-
-def check_price_alerts(bot):
-    """
-    Checks tracked tokens for price target alerts.
-    """
+def check_price_targets(bot):
     tokens = get_tokens()
+    chat_id = os.getenv("CHAT_ID")
     for symbol in tokens:
+        # Use TOKEN_OVERRIDES or default target price (example)
+        target_price = 0.00005  # You can load from config or DB
+        
+        # Fetch current price from Dexscreener or similar
         try:
-            symbol_lower = symbol.lower()
-            # Fetch pair address or use override from DB/config if implemented
-            pair_address = get_pair_address_for_token(symbol)  # Implement this helper if you want
-
-            url = f"https://api.dexscreener.com/latest/dex/pairs/solana/{pair_address}"
-            response = requests.get(url, timeout=10)
-            response.raise_for_status()
-            data = response.json()
-            pair_data = data.get("pair", {})
-
-            price = float(pair_data.get("priceUsd", 0))
-            target_price = get_target_price_for_token(symbol) or DEFAULT_TARGET_PRICE  # implement getter if needed
-
+            # Replace with real pair address mapping for symbol
+            pair = "8fipyfvbusjpuv2wwyk8eppnk5f9dgzs8uasputwszdc"
+            url = f"https://api.dexscreener.com/latest/dex/pairs/solana/{pair}"
+            r = requests.get(url, timeout=5)
+            price = float(r.json()['pair']['priceUsd'])
             if price >= target_price:
-                msg = (
-                    f"🔔 <b>Price Alert:</b> ${symbol} reached target price ${target_price:.6f}\n"
-                    f"Current Price: ${price:.6f}"
-                )
-                logger.info(f"Price alert for {symbol} at price {price}")
-                bot.send_message(chat_id=CHAT_ID, text=msg, parse_mode="HTML")
-
+                msg = f"🎯 Token ${symbol} hit target price of ${target_price:.6f} (current: ${price:.6f})"
+                bot.send_message(chat_id=chat_id, text=msg)
         except Exception as e:
-            logger.error(f"Error checking price alert for {symbol}: {e}")
+            print(f"[PriceAlerts] Error fetching price for {symbol}: {e}")
