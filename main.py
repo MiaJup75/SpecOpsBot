@@ -18,7 +18,7 @@ from utils import (
 )
 from db import init_db, add_wallet, get_wallets, add_token, get_tokens, remove_wallet, remove_token
 from stealth_radar import fetch_new_tokens, filter_suspicious
-from price_alerts import check_price_targets
+from price_alerts import check_price_targets  # <-- New import here
 from mirror_watch import monitor_wallets
 from botnet import botnet_alerts
 
@@ -44,7 +44,8 @@ Use the buttons below or type commands:
 /new /alerts /debug  
 /pnl /sentiment /tradeprompt /classify  
 /stealth /mirror /botnet  
-/watch &lt;wallet&gt; /addtoken $TOKEN /tokens
+/watch &lt;wallet&gt; /addtoken $TOKEN /tokens  
+/pricealerts
 
 Daily updates sent at 9AM Bangkok time (GMT+7).""",
         reply_markup=get_main_keyboard(),
@@ -69,7 +70,6 @@ def handle_callback(update: Update, context: CallbackContext) -> None:
         result = "Unknown command"
 
     if result:
-        # Send or edit message with response
         try:
             query.edit_message_text(text=result, parse_mode=ParseMode.HTML)
         except Exception as e:
@@ -189,6 +189,10 @@ def botnet_command(update: Update, context: CallbackContext, silent=False) -> st
         update.message.reply_text(msg)
     return msg
 
+def price_alert_command(update: Update, context: CallbackContext) -> None:
+    check_price_targets(context.bot)
+    update.message.reply_text("✅ Price targets checked and alerts sent if any.")
+
 # --- Commands config for dynamic registration ---
 COMMANDS = {
     "start": {"handler": start, "desc": "Show welcome message and buttons", "button": False},
@@ -208,7 +212,8 @@ COMMANDS = {
     "classify": {"handler": classify_command, "desc": "Classify token narratives", "button": True},
     "stealth": {"handler": stealth_command, "desc": "Run stealth launch radar", "button": True},
     "mirror": {"handler": mirror_command, "desc": "Run wallet mirror check", "button": True},
-    "botnet": {"handler": botnet_command, "desc": "Run botnet detection", "button": True}
+    "botnet": {"handler": botnet_command, "desc": "Run botnet detection", "button": True},
+    "pricealerts": {"handler": price_alert_command, "desc": "Check price targets and send alerts", "button": True}
 }
 
 def get_main_keyboard():
@@ -262,28 +267,4 @@ def run_stealth_radar(bot):
         msg = (
             f"🚨 Suspicious new token detected!\n"
             f"Name: {token['name']}\n"
-            f"Liquidity: ${token['liquidity']}\n"
-            f"Social Signals: {token['socialSignals']}\n"
-            f"Launch Time: {token['launchTime']}"
-        )
-        bot.send_message(chat_id=chat_id, text=msg)
-
-scheduler = BackgroundScheduler()
-for job in SCHEDULED_JOBS:
-    scheduler.add_job(job["func"], job["trigger"], **{k: v for k, v in job.items() if k not in ["func", "trigger"]})
-scheduler.start()
-
-@app.route('/')
-def index():
-    return "SolMadSpecBot is running."
-
-@app.route(f'/{TOKEN}', methods=['POST'])
-def webhook():
-    update = Update.de_json(request.get_json(force=True), updater.bot)
-    dispatcher.process_update(update)
-    return 'ok'
-
-if __name__ == '__main__':
-    init_db()
-    updater.bot.set_my_commands([BotCommand(cmd, data["desc"]) for cmd, data in COMMANDS.items()])
-    app.run(host='0.0.0.0', port=PORT)
+            f"Liquidity: ${token['
