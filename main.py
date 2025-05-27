@@ -1,155 +1,127 @@
 import logging
-from telegram import Update, Bot, ParseMode
-from telegram.ext import Updater, CommandHandler, CallbackContext
+from telegram import Update, BotCommand
+from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 from apscheduler.schedulers.background import BackgroundScheduler
-from flask import Flask
-from config import config
 from utils import (
     fetch_max_token_data,
     fetch_trending_tokens,
     fetch_new_tokens,
     check_suspicious_activity,
     summarize_wallet_activity,
-    send_target_alerts,
-    send_wallet_activity,
     track_position,
+    send_target_alerts,
+    get_meme_sentiment,
+    detect_stealth_launches
 )
+from config import config
+from flask import Flask
 
-app = Flask(__name__)
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-bot = Bot(token=config["telegram_token"])
-scheduler = BackgroundScheduler()
 
+TOKEN = config['telegram_token']
+app = Flask(__name__)
 
-@app.route("/")
-def home():
-    return "SolMadSpecBot is running!"
-
-
-def start(update: Update, context: CallbackContext):
-    welcome_message = (
-        "<b>Welcome to SolMadSpecBot!</b>\n\n"
-        "🤖 I scan Solana meme coins and alert you on:\n"
-        "• New launches under 12h\n"
-        "• Trending coins by volume\n"
-        "• Suspicious whale or LP actions\n"
-        "• MAX token metrics\n"
-        "• Wallet activity summaries\n\n"
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        "🤖 Welcome to SolMadSpecBot!\n"
+        "Here's what I can do:\n\n"
+        "• /max – MAX token stats\n"
+        "• /trending – Top 5 Sol meme coins\n"
+        "• /new – New token launches\n"
+        "• /alerts – Suspicious activity\n"
+        "• /wallets – Watchlist summaries\n"
+        "• /pnl – PnL & break-even\n"
+        "• /targetalerts – Price trigger zones\n"
+        "• /sentiment – Meme coin mood check\n"
+        "• /stealthlaunches – Low-social risky tokens\n\n"
         "📌 Type /help to view commands!"
     )
-    context.bot.send_message(
-        chat_id=update.effective_chat.id,
-        text=welcome_message,
-        parse_mode=ParseMode.HTML,
+
+async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        "<b>Available Commands:</b>\n"
+        "/max – MAX token update\n"
+        "/trending – Top 5 Sol meme coins\n"
+        "/new – New token launches\n"
+        "/alerts – Suspicious activity\n"
+        "/wallets – Tracked wallet activity\n"
+        "/pnl – PnL and breakeven\n"
+        "/targetalerts – Triggered price zones\n"
+        "/sentiment – Meme sentiment index\n"
+        "/stealthlaunches – Flagged risky tokens",
+        parse_mode='HTML'
     )
 
+async def max_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await fetch_max_token_data(update, context)
 
-def help_command(update: Update, context: CallbackContext):
-    help_text = (
-        "<b>📖 SolMadSpecBot Commands</b>\n"
-        "/start - Show welcome message\n"
-        "/max - Show MAX token update\n"
-        "/wallets - Show wallet activity\n"
-        "/trending - Show trending Solana meme coins\n"
-        "/new - Show new tokens (<12h old)\n"
-        "/alerts - Suspicious dev/whale/LP activity\n"
-        "/targets - Show target price alerts\n"
-        "/debug - Run all features in test mode"
-    )
-    context.bot.send_message(
-        chat_id=update.effective_chat.id,
-        text=help_text,
-        parse_mode=ParseMode.HTML,
-    )
+async def trending_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await fetch_trending_tokens(update, context)
 
+async def new_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await fetch_new_tokens(update, context)
 
-def max_command(update: Update, context: CallbackContext):
-    message = fetch_max_token_data()
-    context.bot.send_message(
-        chat_id=update.effective_chat.id,
-        text=message,
-        parse_mode=ParseMode.HTML,
-        disable_web_page_preview=True,
-    )
+async def alerts_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await check_suspicious_activity(update, context)
 
+async def wallets_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await summarize_wallet_activity(update, context)
 
-def trending_command(update: Update, context: CallbackContext):
-    message = fetch_trending_tokens()
-    context.bot.send_message(chat_id=update.effective_chat.id, text=message, parse_mode=ParseMode.HTML)
+async def pnl_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await track_position(update, context)
 
+async def targetalerts_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await send_target_alerts(update, context)
 
-def new_command(update: Update, context: CallbackContext):
-    message = fetch_new_tokens()
-    context.bot.send_message(chat_id=update.effective_chat.id, text=message, parse_mode=ParseMode.HTML)
+async def sentiment_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await get_meme_sentiment(update, context)
 
-
-def alerts_command(update: Update, context: CallbackContext):
-    message = check_suspicious_activity()
-    context.bot.send_message(chat_id=update.effective_chat.id, text=message, parse_mode=ParseMode.HTML)
-
-
-def wallets_command(update: Update, context: CallbackContext):
-    message = send_wallet_activity()
-    context.bot.send_message(chat_id=update.effective_chat.id, text=message, parse_mode=ParseMode.HTML)
-
-
-def targets_command(update: Update, context: CallbackContext):
-    message = send_target_alerts()
-    context.bot.send_message(chat_id=update.effective_chat.id, text=message, parse_mode=ParseMode.HTML)
-
-
-def debug_command(update: Update, context: CallbackContext):
-    debug_output = (
-        fetch_max_token_data()
-        + "\n\n"
-        + fetch_trending_tokens()
-        + "\n\n"
-        + fetch_new_tokens()
-        + "\n\n"
-        + check_suspicious_activity()
-    )
-    context.bot.send_message(chat_id=update.effective_chat.id, text=debug_output, parse_mode=ParseMode.HTML)
-
-
-def send_daily_report():
-    try:
-        report = (
-            fetch_max_token_data()
-            + "\n\n"
-            + fetch_trending_tokens()
-            + "\n\n"
-            + fetch_new_tokens()
-            + "\n\n"
-            + check_suspicious_activity()
-            + "\n\n"
-            + summarize_wallet_activity()
-        )
-        for uid in config["whitelist"]:
-            bot.send_message(chat_id=uid, text=report, parse_mode=ParseMode.HTML)
-    except Exception as e:
-        logger.error(f"Error sending daily report: {e}")
-
+async def stealthlaunches_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await detect_stealth_launches(update, context)
 
 def main():
-    updater = Updater(token=config["telegram_token"], use_context=True)
-    dispatcher = updater.dispatcher
+    logging.info("Running SolMadSpecBot...")
+    app_builder = ApplicationBuilder().token(TOKEN).build()
 
-    dispatcher.add_handler(CommandHandler("start", start))
-    dispatcher.add_handler(CommandHandler("help", help_command))
-    dispatcher.add_handler(CommandHandler("max", max_command))
-    dispatcher.add_handler(CommandHandler("wallets", wallets_command))
-    dispatcher.add_handler(CommandHandler("trending", trending_command))
-    dispatcher.add_handler(CommandHandler("new", new_command))
-    dispatcher.add_handler(CommandHandler("alerts", alerts_command))
-    dispatcher.add_handler(CommandHandler("targets", targets_command))
-    dispatcher.add_handler(CommandHandler("debug", debug_command))
+    handlers = [
+        (start, "start"),
+        (help_command, "help"),
+        (max_command, "max"),
+        (trending_command, "trending"),
+        (new_command, "new"),
+        (alerts_command, "alerts"),
+        (wallets_command, "wallets"),
+        (pnl_command, "pnl"),
+        (targetalerts_command, "targetalerts"),
+        (sentiment_command, "sentiment"),
+        (stealthlaunches_command, "stealthlaunches"),
+    ]
 
-    updater.start_polling()
-    scheduler.add_job(send_daily_report, "cron", hour=9, timezone="Asia/Bangkok")
+    for handler_func, command_name in handlers:
+        app_builder.add_handler(CommandHandler(command_name, handler_func))
+
+    # Register autocomplete commands
+    app_builder.bot.set_my_commands([
+        BotCommand("start", "Start the bot and show help"),
+        BotCommand("help", "Show command list"),
+        BotCommand("max", "MAX token update"),
+        BotCommand("trending", "Top 5 Sol meme coins"),
+        BotCommand("new", "New token launches"),
+        BotCommand("alerts", "Suspicious activity"),
+        BotCommand("wallets", "Tracked wallet activity"),
+        BotCommand("pnl", "PnL and breakeven"),
+        BotCommand("targetalerts", "Price trigger alerts"),
+        BotCommand("sentiment", "Meme sentiment score"),
+        BotCommand("stealthlaunches", "Stealth tokens to avoid")
+    ])
+
+    # Scheduler (uses pytz only)
+    scheduler = BackgroundScheduler(timezone="Asia/Bangkok")
+    scheduler.add_job(lambda: fetch_max_token_data(None, None), "cron", hour=9)
     scheduler.start()
 
+    app_builder.run_polling()
 
 if __name__ == "__main__":
-    logger.info("Running SolMadSpecBot...")
     main()
