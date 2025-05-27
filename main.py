@@ -24,7 +24,6 @@ app = Flask(__name__)
 updater = Updater(token=TOKEN, use_context=True)
 dispatcher: Dispatcher = updater.dispatcher
 
-# Initialize your Wallet instance (loads burner key from env internally)
 wallet = Wallet()
 
 # --- Inline Keyboard --- #
