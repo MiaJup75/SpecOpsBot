@@ -75,4 +75,15 @@ def get_suspicious_activity_alerts() -> str:
 <i>Monitored wallets + LP changes</i>
 """
 
+def get_wallet_summary() -> str:
+    return """<b>👛 Wallet Watch Summary</b>
+
+• Main Wallet – No suspicious activity  
+• Trojan Wallet – 1 new buy (1.5 SOL)  
+• Burner Wallet – Idle  
+
+MAX token top wallet sold 115K tokens  
+LP unchanged in past 24h
+"""
+
 # Other command helpers (unchanged from previous utils.py) ...
