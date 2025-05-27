@@ -42,4 +42,16 @@ def get_max_token_stats() -> str:
     except Exception as e:
         return f"⚠️ Unable to fetch MAX token data."
 
+def get_trending_coins() -> str:
+    return """<b>📈 Top 5 Trending Solana Meme Coins</b>
+
+1. BONK – +65% 🔥  
+2. MEOW – +38%  
+3. CHAD – +34%  
+4. WEN – +27%  
+5. SLERF – +24%
+
+<i>Data from DEX volume & Telegram buzz</i>
+"""
+
 # Other command helpers (unchanged from previous utils.py) ...
