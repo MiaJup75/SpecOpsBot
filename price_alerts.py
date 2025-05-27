@@ -3,6 +3,9 @@ import requests
 from db import get_tokens
 from telegram import Bot
 from token_config import get_token_config
+import logging
+
+logger = logging.getLogger(__name__)
 
 def fetch_price(pair):
     url = f"https://api.dexscreener.com/latest/dex/pairs/solana/{pair}"
@@ -11,7 +14,7 @@ def fetch_price(pair):
         price = float(response.get("pair", {}).get("priceUsd", 0))
         return price
     except Exception as e:
-        print(f"[PriceAlerts] Failed to fetch price for {pair}: {e}")
+        logger.error(f"[PriceAlerts] Failed to fetch price for {pair}: {e}")
         return None
 
 def check_price_targets(bot: Bot):
@@ -34,4 +37,7 @@ def check_price_targets(bot: Bot):
                    f"Current Price: ${price:.6f}\n"
                    f"Target Price: ${target:.6f}\n"
                    f"Consider reviewing your position.")
-            bot.send_message(chat_id=chat_id, text=msg)
+            try:
+                bot.send_message(chat_id=chat_id, text=msg)
+            except Exception as e:
+                logger.error(f"[PriceAlerts] Failed to send message for {token_upper}: {e}")
