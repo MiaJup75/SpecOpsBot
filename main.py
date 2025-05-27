@@ -10,10 +10,9 @@ from utils import (
     get_pnl_report, get_sentiment_scores, get_trade_prompt, get_narrative_classification
 )
 from db import init_db, add_wallet, get_wallets, add_token, get_tokens, remove_token
-from wallet import Wallet  # your wallet class handling trade execution
+from wallet import Wallet
 from apscheduler.schedulers.background import BackgroundScheduler
 
-# Logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -26,7 +25,6 @@ dispatcher: Dispatcher = updater.dispatcher
 
 wallet = Wallet()
 
-# --- Inline Keyboard --- #
 def get_main_keyboard():
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("💰 MAX", callback_data='max'),
@@ -40,26 +38,17 @@ def get_main_keyboard():
         [InlineKeyboardButton("📋 View Tokens", switch_inline_query_current_chat='/tokens')]
     ])
 
-# --- Command Handlers --- #
-
 def start(update: Update, context: CallbackContext) -> None:
     update.message.reply_text(
         """<b>👋 Welcome to SolMadSpecBot!</b>
 
-Use the buttons below or type:
+Use buttons or commands:
 /max /wallets /trending  
 /new /alerts /debug  
 /pnl /sentiment /tradeprompt /classify  
-/watch &lt;wallet&gt; &lt;nickname&gt; /addtoken $TOKEN /remove_token $TOKEN /tokens /autobuy $TOKEN AMOUNT
+/watch <wallet> [nickname] /addtoken $TOKEN /remove_token $TOKEN /tokens /autobuy $TOKEN AMOUNT /autobuy_trending
 
-Daily updates sent at 9AM Bangkok time (GMT+7).""",
-        reply_markup=get_main_keyboard(),
-        parse_mode=ParseMode.HTML
-    )
-
-def panel_command(update: Update, context: CallbackContext) -> None:
-    update.message.reply_text(
-        "🔘 <b>SolMadSpecBot Panel</b>\nTap a button below:",
+Daily updates at 9AM Bangkok time (GMT+7).""",
         reply_markup=get_main_keyboard(),
         parse_mode=ParseMode.HTML
     )
@@ -68,7 +57,6 @@ def handle_callback(update: Update, context: CallbackContext) -> None:
     query = update.callback_query
     query.answer()
     command = query.data
-
     func_map = {
         'max': get_max_token_stats,
         'wallets': get_wallet_summary,
@@ -77,7 +65,6 @@ def handle_callback(update: Update, context: CallbackContext) -> None:
         'alerts': get_suspicious_activity_alerts,
         'pnl': get_pnl_report
     }
-
     result = func_map.get(command, lambda: "Unknown command")()
     context.bot.send_message(chat_id=query.message.chat.id, text=result, parse_mode=ParseMode.HTML)
 
@@ -154,14 +141,32 @@ def autobuy_command(update: Update, context: CallbackContext) -> None:
         logger.error(f"Error in /autobuy: {e}")
         update.message.reply_text(f"⚠️ Error executing /autobuy: {e}")
 
+def autobuy_trending_command(update: Update, context: CallbackContext) -> None:
+    try:
+        amount = 0.1  # default amount in SOL
+
+        trending_text = get_trending_coins()
+        first_line = trending_text.splitlines()[2]  # third line with first coin
+        symbol = first_line.split("–")[0].strip().upper()
+
+        tokens = get_tokens()
+        if symbol not in tokens:
+            update.message.reply_text(f"⚠️ Token ${symbol} is not in the watchlist. Add it using /addtoken.")
+            return
+
+        result = wallet.buy_token(symbol, amount)
+        update.message.reply_text(f"Buying trending token ${symbol} for {amount} SOL.\n{result}")
+    except Exception as e:
+        logger.error(f"Error in /autobuy_trending: {e}")
+        update.message.reply_text(f"⚠️ Error executing /autobuy_trending: {e}")
+
 def debug_command(update: Update, context: CallbackContext) -> None:
     update.message.reply_text(simulate_debug_output(), parse_mode=ParseMode.HTML)
 
 def help_command(update: Update, context: CallbackContext) -> None:
     update.message.reply_text(HELP_TEXT, parse_mode=ParseMode.HTML)
 
-# --- Register Command Handlers --- #
-
+# Register handlers
 dispatcher.add_handler(CommandHandler("start", start))
 dispatcher.add_handler(CommandHandler("panel", panel_command))
 dispatcher.add_handler(CommandHandler("max", lambda u, c: u.message.reply_text(get_max_token_stats(), parse_mode=ParseMode.HTML)))
@@ -179,10 +184,10 @@ dispatcher.add_handler(CommandHandler("sentiment", lambda u, c: u.message.reply_
 dispatcher.add_handler(CommandHandler("tradeprompt", lambda u, c: u.message.reply_text(get_trade_prompt(), parse_mode=ParseMode.HTML)))
 dispatcher.add_handler(CommandHandler("classify", lambda u, c: u.message.reply_text(get_narrative_classification(), parse_mode=ParseMode.HTML)))
 dispatcher.add_handler(CommandHandler("autobuy", autobuy_command))
+dispatcher.add_handler(CommandHandler("autobuy_trending", autobuy_trending_command))
 dispatcher.add_handler(CommandHandler("help", help_command))
 dispatcher.add_handler(CallbackQueryHandler(handle_callback))
 
-# --- Scheduler Job --- #
 def send_daily_report(bot):
     chat_id = os.getenv("CHAT_ID")
     report = get_full_daily_report()
@@ -192,7 +197,6 @@ scheduler = BackgroundScheduler()
 scheduler.add_job(lambda: send_daily_report(dispatcher.bot), 'cron', hour=9, minute=0, timezone='Asia/Bangkok')
 scheduler.start()
 
-# --- Webhook Setup --- #
 @app.route('/')
 def index():
     return "SolMadSpecBot is running."
@@ -203,7 +207,6 @@ def webhook():
     dispatcher.process_update(update)
     return 'ok'
 
-# --- Run App --- #
 if __name__ == '__main__':
     init_db()
     updater.bot.set_my_commands([
@@ -222,6 +225,7 @@ if __name__ == '__main__':
         BotCommand("tradeprompt", "AI-generated trade idea"),
         BotCommand("classify", "Classify token narratives"),
         BotCommand("autobuy", "Buy tokens automatically"),
+        BotCommand("autobuy_trending", "Buy the top trending meme coin"),
         BotCommand("debug", "Run simulated debug outputs"),
         BotCommand("help", "Show this help message")
     ])
