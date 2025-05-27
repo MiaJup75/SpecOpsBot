@@ -10,7 +10,7 @@ from utils import (
     get_full_daily_report, HELP_TEXT, simulate_debug_output,
     get_pnl_report, get_sentiment_scores, get_trade_prompt, get_narrative_classification
 )
-from db import init_db, add_wallet, get_wallets, add_token, get_tokens, remove_token
+from db import init_db, add_wallet, get_wallets, add_token, get_tokens, remove_token, remove_wallet
 from scanner import scan_new_tokens
 from stealth_scanner import scan_stealth_tokens
 from pnl_tracker import check_max_pnl
@@ -41,6 +41,7 @@ HELP_TEXT = """
 /max – View MAX token stats  
 /wallets – List watched wallets  
 /watch &lt;nickname&gt; &lt;wallet&gt; – Add a wallet to watch  
+/removewallet &lt;nickname&gt; – Remove a wallet by nickname  
 /addtoken $TOKEN – Add a token to watch  
 /removetoken $TOKEN – Remove a token from watchlist  
 /tokens – List all tracked tokens  
@@ -59,15 +60,24 @@ HELP_TEXT = """
 # --- UI --- #
 def get_main_keyboard():
     return InlineKeyboardMarkup([
+        [InlineKeyboardButton("🏠 Start", callback_data='start'),
+         InlineKeyboardButton("❓ Help", callback_data='help')],
         [InlineKeyboardButton("💰 MAX", callback_data='max'),
          InlineKeyboardButton("👛 Wallets", callback_data='wallets')],
         [InlineKeyboardButton("📈 Trending", callback_data='trending'),
          InlineKeyboardButton("🆕 New", callback_data='new')],
         [InlineKeyboardButton("🚨 Alerts", callback_data='alerts'),
          InlineKeyboardButton("📊 PnL", callback_data='pnl')],
+        [InlineKeyboardButton("🔍 Sentiment", callback_data='sentiment'),
+         InlineKeyboardButton("🤖 AI Trade", callback_data='tradeprompt')],
+        [InlineKeyboardButton("🗂 Classify", callback_data='classify'),
+         InlineKeyboardButton("🐞 Debug", callback_data='debug')],
         [InlineKeyboardButton("➕ Add Wallet", switch_inline_query_current_chat='/watch '),
-         InlineKeyboardButton("➕ Add Token", switch_inline_query_current_chat='/addtoken $')],
-        [InlineKeyboardButton("📋 View Tokens", switch_inline_query_current_chat='/tokens')]
+         InlineKeyboardButton("➖ Remove Wallet", switch_inline_query_current_chat='/removewallet ')],
+        [InlineKeyboardButton("➕ Add Token", switch_inline_query_current_chat='/addtoken $'),
+         InlineKeyboardButton("❌ Remove Token", switch_inline_query_current_chat='/removetoken $')],
+        [InlineKeyboardButton("🗒 View Tokens", switch_inline_query_current_chat='/tokens'),
+         InlineKeyboardButton("🔄 Panel", callback_data='panel')]
     ])
 
 # --- Commands --- #
@@ -84,8 +94,14 @@ Use the buttons below or type commands:
 /watch &lt;nickname&gt; &lt;wallet_address&gt;  
 Example: /watch MyWallet 4FEj7nwm5wZXbMo3zSDiV51eLgbFWgPtFRHATUFpu9As  
 
+➤ To remove a wallet:  
+/removewallet &lt;nickname&gt;  
+
 ➤ To add a token:  
 /addtoken $TOKEN  
+
+➤ To remove a token:  
+/removetoken $TOKEN  
 
 ➤ To list tokens:  
 /tokens  
@@ -114,13 +130,27 @@ def handle_callback(update: Update, context: CallbackContext) -> None:
     command = query.data
 
     func_map = {
+        'start': lambda: start(update, context),
+        'help': lambda: help_command(update, context),
+        'panel': lambda: panel_command(update, context),
         'max': get_max_token_stats,
         'wallets': format_wallet_summary,
         'trending': get_trending_coins,
         'new': get_new_tokens,
         'alerts': get_suspicious_activity_alerts,
-        'pnl': get_pnl_report
+        'pnl': get_pnl_report,
+        'sentiment': get_sentiment_scores,
+        'tradeprompt': lambda: get_ai_trade_prompt(dispatcher.bot),
+        'classify': get_narrative_classification,
+        'debug': simulate_debug_output,
+        'removetoken': lambda: "Use /removetoken $TOKEN command to remove a token.",
+        'removewallet': lambda: "Use /removewallet <nickname> command to remove a wallet."
     }
+
+    # Some callbacks need update/context passed
+    if command in ['start', 'help', 'panel']:
+        func_map[command]()
+        return
 
     result = func_map.get(command, lambda: "Unknown command")()
     context.bot.send_message(chat_id=query.message.chat.id, text=result, parse_mode=ParseMode.HTML)
@@ -138,12 +168,26 @@ def watch_command(update: Update, context: CallbackContext) -> None:
         label = context.args[0]
         address = " ".join(context.args[1:])
         
-        # Add validation for address format here if needed
-        
         add_wallet(label, address)
         update.message.reply_text(f"✅ Watching wallet:\n<b>{label}</b> – <code>{address}</code>", parse_mode=ParseMode.HTML)
     except Exception as e:
         update.message.reply_text(f"⚠️ Error adding wallet: {e}")
+
+def removewallet_command(update: Update, context: CallbackContext) -> None:
+    try:
+        if len(context.args) != 1:
+            update.message.reply_text(
+                "❗ Usage: /removewallet <nickname>\n"
+                "Example: /removewallet MyWallet",
+                parse_mode=ParseMode.HTML
+            )
+            return
+        
+        label = context.args[0]
+        remove_wallet(label)
+        update.message.reply_text(f"✅ Removed wallet with nickname: <b>{label}</b>", parse_mode=ParseMode.HTML)
+    except Exception as e:
+        update.message.reply_text(f"⚠️ Error removing wallet: {e}")
 
 def wallets_command(update: Update, context: CallbackContext) -> None:
     summary = format_wallet_summary()
@@ -156,6 +200,7 @@ dispatcher.add_handler(CommandHandler("panel", panel_command))
 dispatcher.add_handler(CommandHandler("max", lambda u, c: u.message.reply_text(get_max_token_stats(), parse_mode=ParseMode.HTML)))
 dispatcher.add_handler(CommandHandler("wallets", wallets_command))
 dispatcher.add_handler(CommandHandler("watch", watch_command))
+dispatcher.add_handler(CommandHandler("removewallet", removewallet_command))
 dispatcher.add_handler(CommandHandler("addtoken", handle_add_token))
 dispatcher.add_handler(CommandHandler("tokens", handle_tokens))
 dispatcher.add_handler(CommandHandler("removetoken", handle_remove_token))
@@ -206,6 +251,7 @@ if __name__ == '__main__':
         BotCommand("max", "Show MAX token stats"),
         BotCommand("wallets", "List all watched wallets"),
         BotCommand("watch", "Add a new wallet to watch"),
+        BotCommand("removewallet", "Remove a wallet by nickname"),
         BotCommand("addtoken", "Add a token to watch"),
         BotCommand("tokens", "List all tracked tokens"),
         BotCommand("removetoken", "Remove a tracked token"),
