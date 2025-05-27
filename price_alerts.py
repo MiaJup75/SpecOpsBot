@@ -2,15 +2,7 @@ import os
 import requests
 from db import get_tokens  # Your tracked tokens list
 from telegram import Bot
-
-# Example token config with default targets
-TOKEN_CONFIG = {
-    "MAX": {
-        "pair": "8fipyfvbusjpuv2wwyk8eppnk5f9dgzs8uasputwszdc",
-        "target": 0.00005,  # Default target price in USD
-    },
-    # Add more tokens here with pair address and default target price
-}
+from token_config import get_token_config
 
 def fetch_price(pair):
     url = f"https://api.dexscreener.com/latest/dex/pairs/solana/{pair}"
@@ -27,11 +19,13 @@ def check_price_targets(bot: Bot):
     tokens = get_tokens()
     for token in tokens:
         token_upper = token.upper()
-        config = TOKEN_CONFIG.get(token_upper)
+        config = get_token_config(token_upper)
         if not config:
             continue
-        pair = config["pair"]
-        target = config["target"]
+        pair = config.get("pair")
+        target = config.get("target_price")
+        if not pair or target is None:
+            continue
         price = fetch_price(pair)
         if price is None:
             continue
