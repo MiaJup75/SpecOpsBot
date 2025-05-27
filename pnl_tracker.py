@@ -2,24 +2,18 @@ import os
 import datetime
 import requests
 from db import get_tokens
+from cost_tracker import get_dynamic_avg_cost
 
 WALLET_ADDRESS = "FWg4kXnm3BmgrymEFo7BTE6iwEqgzdy4owo4qzx8WBjH"
 
-# Optional: set avg cost + target for each token (customize as needed)
+# Add per-token config for pair/mint/target. avg_cost is now optional
 TOKEN_OVERRIDES = {
     "MAX": {
         "pair": "8fipyfvbusjpuv2wwyk8eppnk5f9dgzs8uasputwszdc",
         "mint": "EQbLvkkT8htw9uiC6AG4wwHEsmV4zHQkTNyF6yJDpump",
-        "avg_cost": 0.000028,
         "target": 0.000050
-    },
-    "ZAZA": {
-        "pair": "fakezazazazazaza111",
-        "mint": "ZAZAZAZA123456789abcdef",
-        "avg_cost": 0.0015,
-        "target": 0.0020
     }
-    # Add more tokens if needed
+    # Add more tokens here with their pair + mint address
 }
 
 def get_token_balance(mint_address):
@@ -39,19 +33,20 @@ def check_max_pnl(bot):
     any_data = False
 
     for symbol in tracked:
-        data = TOKEN_OVERRIDES.get(symbol.upper())
+        symbol = symbol.upper()
+        data = TOKEN_OVERRIDES.get(symbol)
         if not data:
             continue
 
-        pair = data["pair"]
-        mint = data["mint"]
-        avg_cost = data.get("avg_cost", 0.0)
+        pair = data.get("pair")
+        mint = data.get("mint")
         target = data.get("target", 0.0)
 
         balance = get_token_balance(mint)
         if balance == 0:
             continue
 
+        # Fetch price data
         try:
             url = f"https://api.dexscreener.com/latest/dex/pairs/solana/{pair}"
             r = requests.get(url, timeout=5)
@@ -61,10 +56,15 @@ def check_max_pnl(bot):
             lp = float(info.get("liquidity", {}).get("usd", 0))
             vol = float(info.get("volume", {}).get("h24", 0))
 
+            # Dynamic average cost
+            avg_cost = get_dynamic_avg_cost() or 0.0
+            if avg_cost == 0.0:
+                continue
+
             est = price * balance
             pnl_pct = ((price - avg_cost) / avg_cost) * 100
-
             status = "🎯" if price >= target else ""
+
             lines.append(f"""<b>${symbol}</b> – {pnl_pct:+.1f}% {status}  
 Est: ${est:,.0f} | P: ${price:.6f}  
 MC: ${mcap:,.0f} | LP: ${lp:,.0f} | Vol: ${vol:,.0f}\n""")
