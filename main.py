@@ -10,7 +10,7 @@ from utils import (
     get_full_daily_report, HELP_TEXT, simulate_debug_output,
     get_pnl_report, get_sentiment_scores, get_trade_prompt, get_narrative_classification
 )
-from db import init_db, add_wallet, get_wallets, add_token, get_tokens
+from db import init_db, add_wallet, get_wallets, add_token, get_tokens, remove_token
 from scanner import scan_new_tokens
 from stealth_scanner import scan_stealth_tokens
 from pnl_tracker import check_max_pnl
@@ -40,7 +40,7 @@ HELP_TEXT = """
 /start – Show welcome message and buttons  
 /max – View MAX token stats  
 /wallets – List watched wallets  
-/watch &lt;wallet&gt; – Add a wallet to watch  
+/watch &lt;nickname&gt; &lt;wallet&gt; – Add a wallet to watch  
 /addtoken $TOKEN – Add a token to watch  
 /removetoken $TOKEN – Remove a token from watchlist  
 /tokens – List all tracked tokens  
@@ -78,7 +78,7 @@ Use the buttons below or type:
 /max /wallets /trending  
 /new /alerts /debug  
 /pnl /sentiment /tradeprompt /classify  
-/watch &lt;wallet&gt; /addtoken $TOKEN /tokens
+/watch &lt;nickname&gt; &lt;wallet&gt; /addtoken $TOKEN /tokens
 
 Daily updates sent at 9AM Bangkok time (GMT+7)."""
     update.message.reply_text(welcome_text, reply_markup=get_main_keyboard(), parse_mode=ParseMode.HTML)
@@ -117,15 +117,22 @@ def handle_callback(update: Update, context: CallbackContext) -> None:
 
 def watch_command(update: Update, context: CallbackContext) -> None:
     try:
-        if len(context.args) != 1:
-            update.message.reply_text("Usage: /watch &lt;wallet_address&gt;", parse_mode=ParseMode.HTML)
+        if len(context.args) < 2:
+            update.message.reply_text(
+                "Usage: /watch <nickname> <wallet_address>\nExample: /watch MyWallet 4FEj7nwm5wZXbMo3zSDiV51eLgbFWgPtFRHATUFpu9As",
+                parse_mode=ParseMode.HTML
+            )
             return
-        address = context.args[0]
-        label = f"Wallet {address[:4]}...{address[-4:]}"
+        
+        label = context.args[0]
+        address = " ".join(context.args[1:])
+        
+        # Add validation for address format here if needed
+        
         add_wallet(label, address)
-        update.message.reply_text(f"✅ Watching wallet:\n<code>{address}</code>", parse_mode=ParseMode.HTML)
-    except Exception:
-        update.message.reply_text("⚠️ Error adding wallet.")
+        update.message.reply_text(f"✅ Watching wallet:\n<b>{label}</b> – <code>{address}</code>", parse_mode=ParseMode.HTML)
+    except Exception as e:
+        update.message.reply_text(f"⚠️ Error adding wallet: {e}")
 
 def wallets_command(update: Update, context: CallbackContext) -> None:
     summary = format_wallet_summary()
