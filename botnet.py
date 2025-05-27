@@ -1,25 +1,21 @@
 import os
 import requests
-from db import get_wallets
 from telegram import Bot
 
-def detect_botnet_activity():
-    # Placeholder: implement real detection logic
-    # Example: scan whale wallets for suspicious rapid buys/sells
-    suspicious_wallets = []
-    wallets = get_wallets()
-    for label, address in wallets:
-        # You’d analyze recent transactions and flag bots
-        # For MVP, let's simulate no bots found
-        pass
-    return suspicious_wallets
+def fetch_botnet_signals():
+    # Example: fetch suspicious bot activity data from an API or custom source
+    # Placeholder for real botnet detection logic
+    # Return a list of suspicious events/messages
+    return [
+        "⚠️ Bot detected buying $FAKECOIN rapidly",
+        "⚠️ Multiple wallets flagged for wash trading on $SCAM"
+    ]
 
-def botnet_alerts(bot: Bot):
+def check_botnet_activity(bot: Bot):
     chat_id = os.getenv("CHAT_ID")
-    bots_found = detect_botnet_activity()
-    if bots_found:
-        for bot_wallet in bots_found:
-            msg = f"🤖 Botnet activity detected on wallet {bot_wallet}"
-            bot.send_message(chat_id=chat_id, text=msg)
-    else:
-        print("[Botnet] No suspicious bot activity detected.")
+    signals = fetch_botnet_signals()
+    if not signals:
+        return  # Nothing suspicious detected
+
+    msg = "<b>🤖 Botnet Activity Alerts</b>\n" + "\n".join(signals)
+    bot.send_message(chat_id=chat_id, text=msg, parse_mode="HTML")
