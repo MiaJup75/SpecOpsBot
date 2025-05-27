@@ -137,6 +137,19 @@ Simulated /alerts:
 <i>This is dummy data for debug only</i>
 """
 
+def get_pnl_report() -> str:
+    return """<b>📊 MAX Token PnL Report</b>
+
+• Holdings: 10.45M MAX  
+• Average Buy: 0.000028  
+• Current Price: 0.000030  
+• Unrealized PnL: +7.1%  
+• Target Exit: $500K Market Cap  
+• Sell Plan: 2M tokens @ 0.000050
+
+<i>Last updated: Today</i>
+"""
+
 HELP_TEXT = """<b>🛠 Available Commands:</b>
 
 /max – View MAX token stats  
