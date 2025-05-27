@@ -1,87 +1,76 @@
 import requests
 import json
 import time
-import random
-import logging
 from datetime import datetime
 from config import config
 
+TELEGRAM_TOKEN = config["telegram_token"]
 MAX_TOKEN_ADDRESS = config["max_token"]
-DEXSCREENER_API = f"https://api.dexscreener.io/latest/dex/pairs/solana/8fipyfvbusjpuv2wwyk8eppnk5f9dgzs8uasputwszdc"
+DEXSCREENER_API = f"https://api.dexscreener.com/latest/dex/pairs/solana/8fipyfvbusjpuv2wwyk8eppnk5f9dgzs8uasputwszdc"
 
 def fetch_max_token_data():
     try:
-        res = requests.get(DEXSCREENER_API)
-        data = res.json()["pairs"][0]
+        response = requests.get(DEXSCREENER_API)
+        data = response.json()
+        pair = data["pair"]
 
-        price = float(data["priceUsd"])
-        market_cap = round(data["marketCap"])
-        volume = float(data["volume"]["h24"])
-        fdv = round(data["fdv"])
-        txns = data["txns"]["h24"]
-        liquidity = round(data["liquidity"]["usd"], 2)
-        change = round(data["priceChange"]["h24"], 2)
-        launch_timestamp = int(data["pairCreatedAt"]) // 1000
+        price = float(pair["priceUsd"])
+        market_cap = float(pair.get("marketCap", 0))
+        volume_24h = float(pair["volume"]["h24"])
+        fdv = float(pair.get("fdv", 0))
+        buys = pair["txns"]["h24"]["buys"]
+        sells = pair["txns"]["h24"]["sells"]
+        liquidity = float(pair["liquidity"]["usd"])
+        change_24h = float(pair["priceChange"]["h24"])
+        holders = "N/A"
+        launch_timestamp = int(pair.get("pairCreatedAt", 0))
+        if launch_timestamp:
+            launch_time = datetime.utcfromtimestamp(launch_timestamp / 1000).strftime('%Y-%m-%d %H:%M:%S')
+        else:
+            launch_time = "Unknown"
 
-        launch_time = datetime.utcfromtimestamp(launch_timestamp).strftime('%Y-%m-%d %H:%M UTC')
-
-        return {
-            "price": price,
-            "market_cap": market_cap,
-            "volume": volume,
-            "fdv": fdv,
-            "buys": txns["buys"],
-            "sells": txns["sells"],
-            "liquidity": liquidity,
-            "change": change,
-            "launch_time": launch_time,
-        }
+        return f"""
+🐶 <b>MAX Token Update</b>
+💰 Price: ${price:.8f}
+🏛️ Market Cap: ${int(market_cap):,}
+📉 Volume (24h): ${volume_24h:,.2f}
+🏦 FDV: ${int(fdv):,}
+📊 Buys: {buys} | Sells: {sells}
+💧 Liquidity: ${liquidity:,.2f}
+📈 24H Change: {change_24h:.2f}%
+🔢 Holders: {holders}
+🕐 Launch Time: {launch_time}
+🔗 <a href="https://dexscreener.com/solana/8fipyfvbusjpuv2wwyk8eppnk5f9dgzs8uasputwszdc">View on Dexscreener</a>
+        """.strip()
     except Exception as e:
-        logging.error(f"Error fetching MAX data: {e}")
-        return None
+        return f"⚠️ Error fetching MAX token data: {e}"
 
 def is_allowed(user_id):
-    return str(user_id) in config["whitelist"]
+    return str(user_id) in config.get("whitelist", [])
+
+def fetch_trending_tokens():
+    # Placeholder for Tier 3+ trending engine
+    return [
+        {"symbol": "SOL", "price": 177.94, "volume": 104107},
+        {"symbol": "MEME1", "price": 0.0002834, "volume": 1202},
+        {"symbol": "MEME2", "price": 177.75, "volume": 1618010},
+        {"symbol": "MEME3", "price": 177.61, "volume": 330633},
+        {"symbol": "MEME4", "price": 177.83, "volume": 47040},
+    ]
 
 def get_trending_coins():
-    # Dummy data placeholder – integrate actual Birdeye/Dexscreener API
-    return [
-        {"name": "DOGE420", "price": "0.00000230", "volume": "$432,112"},
-        {"name": "FROGZILLA", "price": "0.00000944", "volume": "$210,000"},
-        {"name": "PEPEC", "price": "0.00000033", "volume": "$109,870"},
-        {"name": "LUNAR", "price": "0.00421", "volume": "$81,450"},
-        {"name": "BONGCAT", "price": "0.000882", "volume": "$71,110"},
-    ]
-
-def fetch_new_tokens():
-    # Simulated data – should fetch from Birdeye API (12h window)
-    return [
-        {"name": "STEALTHCOIN", "age": "4h", "liquidity": "$7,000"},
-        {"name": "RAIDPEPE", "age": "2h", "liquidity": "$13,000"},
-    ]
-
-def check_suspicious_activity():
-    # Simulated detection
-    return [
-        "⚠️ Whale dumped 1.2M MAX",
-        "⚠️ Dev wallet removed 20% LP"
-    ]
+    coins = fetch_trending_tokens()
+    message = "🚀 <b>Trending Solana Meme Coins</b>\n"
+    for i, coin in enumerate(coins, 1):
+        message += f"{i}. {coin['symbol']} – ${coin['price']} – Vol: ${int(coin['volume']):,}\n"
+    return message
 
 def summarize_wallet_activity():
-    # Simulated data
-    return {
-        "wallets": [
-            {"name": "Main Wallet", "activity": "+3 buys / 1 sell"},
-            {"name": "Trojan Wallet", "activity": "Idle"},
-        ]
-    }
+    # Placeholder for wallet tracker summary
+    return "📊 No major wallet activity in the last 24h."
 
-def classify_narratives():
-    return [
-        {"theme": "Dogs", "tokens": ["MAX", "DOGE420", "SHIBAETH"]},
-        {"theme": "Memes", "tokens": ["PEPE", "BONGCAT"]},
-    ]
+def fetch_new_tokens():
+    return "🆕 No new token launches in the last 12h."  # Placeholder for future Tier 4 smart scanning
 
-def send_target_alerts():
-    # Simulated alerting
-    return ["🎯 $MAX hit target zone – consider partial exit."]
+def check_suspicious_activity():
+    return "⚠️ No suspicious activity detected."  # Placeholder for future botnet/mirror alert
