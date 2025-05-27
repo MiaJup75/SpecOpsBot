@@ -64,4 +64,15 @@ def get_new_tokens() -> str:
 <i>Click /alerts for suspicious flags</i>
 """
 
+def get_suspicious_activity_alerts() -> str:
+    return """<b>🚨 Suspicious Activity</b>
+
+• DEV wallet sold 30% of $CHEEMS  
+• LP for $FAKE withdrawn (-70%)  
+• Botnet activity on $ZOOM  
+• Whale exit from $SLURP (500M tokens)
+
+<i>Monitored wallets + LP changes</i>
+"""
+
 # Other command helpers (unchanged from previous utils.py) ...
