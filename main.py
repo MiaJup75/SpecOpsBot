@@ -1,9 +1,10 @@
 import logging
+import pytz
+import datetime
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ParseMode, BotCommand
 from telegram.ext import Updater, CommandHandler, CallbackContext, CallbackQueryHandler, Dispatcher
 from flask import Flask, request
 import os
-import datetime
 
 from utils import (
     get_max_token_stats, get_trending_coins, get_new_tokens, get_suspicious_activity_alerts,
@@ -13,7 +14,6 @@ from utils import (
 from db import init_db, add_wallet, get_wallets, add_token, get_tokens, remove_token, remove_wallet
 from apscheduler.schedulers.background import BackgroundScheduler
 
-# Import the new modules
 from stealth_scanner import scan_new_tokens
 from price_alerts import check_price_triggers
 from mirror_watch import mirror_wallets
@@ -29,6 +29,9 @@ PORT = int(os.environ.get('PORT', 10000))
 app = Flask(__name__)
 updater = Updater(token=TOKEN, use_context=True)
 dispatcher: Dispatcher = updater.dispatcher
+
+# Define pytz timezone object for scheduler
+bangkok_tz = pytz.timezone('Asia/Bangkok')
 
 # --- Inline Keyboard --- #
 def get_main_keyboard():
@@ -183,11 +186,13 @@ def scheduled_mirror_wallets():
     last_mirror_check = datetime.datetime.utcnow()
 
 scheduler = BackgroundScheduler()
-scheduler.add_job(lambda: send_daily_report(updater.bot), 'cron', hour=9, minute=0, timezone='Asia/Bangkok')
-scheduler.add_job(lambda: scan_new_tokens(updater.bot), 'interval', minutes=5)
-scheduler.add_job(lambda: check_price_triggers(updater.bot), 'interval', minutes=7)
-scheduler.add_job(scheduled_mirror_wallets, 'interval', minutes=6)
-scheduler.add_job(lambda: botnet_alerts(updater.bot), 'interval', minutes=8)
+
+scheduler.add_job(lambda: send_daily_report(updater.bot), 'cron', hour=9, minute=0, timezone=bangkok_tz)
+scheduler.add_job(lambda: scan_new_tokens(updater.bot), 'interval', minutes=5, timezone=bangkok_tz)
+scheduler.add_job(lambda: check_price_triggers(updater.bot), 'interval', minutes=7, timezone=bangkok_tz)
+scheduler.add_job(scheduled_mirror_wallets, 'interval', minutes=6, timezone=bangkok_tz)
+scheduler.add_job(lambda: botnet_alerts(updater.bot), 'interval', minutes=8, timezone=bangkok_tz)
+
 scheduler.start()
 
 # --- Webhook Setup --- #
