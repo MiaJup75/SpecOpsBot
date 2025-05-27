@@ -1,89 +1,85 @@
-import json
 import requests
-from datetime import datetime
 from config import config
 
-def is_allowed(user_id):
-    return str(user_id) in config["whitelist"]
-
 def fetch_max_token_data():
-    url = "https://api.dexscreener.com/latest/dex/pairs/solana/8fipyfvbusjpuv2wwyk8eppnk5f9dgzs8uasputwszdc"
+    address = config["max_token"]
+    url = f"https://api.dexscreener.com/latest/dex/pairs/solana/8fipyfvbusjpuv2wwyk8eppnk5f9dgzs8uasputwszdc"
     try:
         response = requests.get(url)
-        data = response.json()
-        pair = data.get("pair", {})
-        price = pair.get("priceUsd", "N/A")
-        market_cap = pair.get("marketCap", "N/A")
-        volume = pair.get("volume", {}).get("h24", "N/A")
-        fdv = pair.get("fdv", "N/A")
-
+        data = response.json().get("pair", {})
         return {
-            "price": f"${float(price):,.8f}" if price else "N/A",
-            "market_cap": f"${int(market_cap):,}" if market_cap else "N/A",
-            "volume": f"${float(volume):,.0f}" if volume else "N/A",
-            "fdv": f"${int(fdv):,}" if fdv else "N/A"
+            "price": data.get("priceUsd"),
+            "market_cap": data.get("marketCap"),
+            "volume": data.get("volume", {}).get("h24"),
+            "fdv": data.get("fdv")
         }
     except Exception as e:
-        return {"error": str(e)}
+        return None
 
-def fetch_trending_tokens():
+def is_allowed(user_id):
+    return str(user_id) in config.get("whitelist", [])
+
+def get_trending_coins():
     url = "https://api.dexscreener.com/latest/dex/pairs/solana"
     try:
         response = requests.get(url)
-        data = response.json()
-        pairs = data.get("pairs", [])
-
-        sorted_pairs = sorted(pairs, key=lambda x: float(x.get("volume", {}).get("h24", 0)), reverse=True)
-        top_pairs = sorted_pairs[:5]
-
-        results = []
-        for pair in top_pairs:
-            base = pair["baseToken"]["symbol"]
-            price = float(pair.get("priceUsd", 0))
-            volume = float(pair.get("volume", {}).get("h24", 0))
-            results.append(f"{base} – ${price:,.8f} – Vol: ${volume:,.0f}")
-
-        return "\n".join(results)
-    except Exception as e:
-        return f"Error: {e}"
+        pairs = response.json().get("pairs", [])
+        sorted_pairs = sorted(
+            [p for p in pairs if p.get("baseToken", {}).get("symbol") != "SOL"],
+            key=lambda x: x.get("volume", {}).get("h24", 0),
+            reverse=True
+        )[:5]
+        return sorted_pairs
+    except Exception:
+        return []
 
 def fetch_new_tokens():
     url = "https://api.dexscreener.com/latest/dex/pairs/solana"
     try:
         response = requests.get(url)
-        data = response.json()
-        pairs = data.get("pairs", [])
+        pairs = response.json().get("pairs", [])
         new_tokens = []
-
-        for pair in pairs:
-            created = pair.get("pairCreatedAt")
-            if not created:
-                continue
-            launch_time = datetime.fromtimestamp(int(created) / 1000)
-            age_minutes = (datetime.utcnow() - launch_time).total_seconds() / 60
-            if age_minutes <= 1440:  # 24 hours
-                symbol = pair["baseToken"]["symbol"]
-                volume = float(pair.get("volume", {}).get("h24", 0))
-                lp = float(pair.get("liquidity", {}).get("usd", 0))
-                time_str = launch_time.strftime("%Y-%m-%d %H:%M")
-                new_tokens.append(f"{symbol} – LP: ${lp:,.0f} – Vol: ${volume:,.0f} – Launched: {time_str}")
-
-        if not new_tokens:
-            return "No new tokens found."
-        return "\n".join(new_tokens[:5])
-    except Exception as e:
-        return f"Error: {e}"
+        for token in pairs:
+            if token.get("pairCreatedAt"):
+                new_tokens.append(token)
+        return sorted(new_tokens, key=lambda x: x["pairCreatedAt"], reverse=True)[:5]
+    except Exception:
+        return []
 
 def check_suspicious_activity():
-    dummy_alerts = [
-        "🚨 Whale sold 10% of supply",
-        "⚠️ LP dropped by 30% in 10 min",
-        "🧠 Botnet activity spike detected"
+    return [
+        {"token": "RUGDOG", "flag": "🚨 Liquidity pulled"},
+        {"token": "FAKEAI", "flag": "⚠️ Dev wallet dumped 80%"},
     ]
-    return "\n".join(dummy_alerts)
 
-def track_position():
-    return "📈 You bought 10.45M MAX at $0.0000885. Current price is $0.0003382. You're up 282%!"
+def track_position(held_tokens=10_450_000, buy_price=0.0002):
+    current = fetch_max_token_data()
+    if not current:
+        return None
+    current_price = float(current["price"])
+    value = held_tokens * current_price
+    invested = held_tokens * buy_price
+    pnl = value - invested
+    return {
+        "value": round(value, 2),
+        "pnl": round(pnl, 2),
+        "breakeven": round(buy_price, 6)
+    }
 
-def get_token_info(token_address):
-    return f"Token: {token_address[:6]}...{token_address[-4:]}\nFake Risk: LOW\nLock Status: LOCKED"
+def get_token_info(address):
+    url = f"https://api.dexscreener.com/latest/dex/tokens/{address}"
+    try:
+        res = requests.get(url)
+        token_data = res.json().get("pairs", [])[0]
+        return {
+            "symbol": token_data["baseToken"]["symbol"],
+            "price": token_data["priceUsd"],
+            "volume": token_data["volume"]["h24"],
+            "liquidity": token_data["liquidity"]["usd"],
+        }
+    except Exception:
+        return None
+
+def summarize_wallet_activity(wallet_address):
+    # Dummy placeholder for now
+    return f"Wallet {wallet_address[:4]}...{wallet_address[-4:]} activity summary:\n🟢 2 Buys, 🔴 1 Sell in last 24h"
