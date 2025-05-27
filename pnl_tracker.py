@@ -4,14 +4,12 @@ import requests
 from db import get_tokens, get_wallets
 from cost_tracker import get_dynamic_avg_cost
 
-# Token config (add your tokens here)
 TOKEN_OVERRIDES = {
     "MAX": {
         "pair": "8fipyfvbusjpuv2wwyk8eppnk5f9dgzs8uasputwszdc",
         "mint": "EQbLvkkT8htw9uiC6AG4wwHEsmV4zHQkTNyF6yJDpump",
         "target": 0.000050
     }
-    # add more tokens here as needed
 }
 
 def get_token_balance(wallet_address, mint_address):
