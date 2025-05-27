@@ -1,21 +1,25 @@
-import logging
+import requests
+import os
+from db import get_wallets
+from telegram import Bot
 
-logger = logging.getLogger(__name__)
+def fetch_wallet_activity(address):
+    # Example: fetch last transactions for the wallet from Solscan or other API
+    url = f"https://public-api.solscan.io/account/tokens?account={address}"
+    try:
+        resp = requests.get(url, timeout=10)
+        return resp.json()  # Adjust parsing as needed
+    except Exception as e:
+        print(f"[MirrorWatch] Error fetching wallet {address}: {e}")
+        return []
 
-def check_mirror_trades(bot):
-    """
-    Checks for wallet clusters making synchronized trades.
-    Alerts when mirror trading is detected.
-    """
-    # TODO: Implement wallet clustering and trade time correlation with real data
+def monitor_wallets(bot: Bot):
+    wallets = get_wallets()
+    chat_id = os.getenv("CHAT_ID")
 
-    mirror_events = [
-        {"wallet_group": "ClusterA", "token": "MEME", "action": "Bought 1000 tokens"},
-        {"wallet_group": "ClusterB", "token": "SHIB", "action": "Sold 500 tokens"},
-    ]
-
-    for event in mirror_events:
-        msg = f"🔄 <b>Mirror Trade Detected:</b> Wallet group {event['wallet_group']} " \
-              f"{event['action']} of {event['token']}"
-        logger.info(f"Mirror trade alert: {event['wallet_group']} on {event['token']}")
-        bot.send_message(chat_id=bot.chat_id, text=msg, parse_mode="HTML")
+    for label, address in wallets:
+        activity = fetch_wallet_activity(address)
+        # Here implement logic to detect new buys/sells or interesting activity
+        # For MVP, we just notify about wallet checked (replace with real logic)
+        msg = f"🔍 Checked wallet '{label}' ({address[:6]}...{address[-6:]}) - Recent activity found."
+        bot.send_message(chat_id=chat_id, text=msg)
