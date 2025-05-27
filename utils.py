@@ -124,6 +124,19 @@ $ZAP – AI
 $FAKE – None
 """
 
+def simulate_debug_output() -> str:
+    return """<b>🧪 Debug Simulation</b>
+
+Simulated /new:  
+• $TEST – LP $4.2K – Locked ✅  
+• $FAKE – LP $6.8K – No lock ❌  
+
+Simulated /alerts:  
+• Whale dumped 900K $SIM  
+
+<i>This is dummy data for debug only</i>
+"""
+
 HELP_TEXT = """<b>🛠 Available Commands:</b>
 
 /max – View MAX token stats  
