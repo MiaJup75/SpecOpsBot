@@ -43,7 +43,7 @@ def get_trending_coins() -> str:
 """
 
 def get_new_tokens() -> str:
-    return """<b>🆕 New Token Launches (<24h)</b>
+    return """<b>🆕 New Token Launches (&lt;24h)</b>
 
 • $LOOT – LP $8.4K – Locked 7d ✅  
 • $ZOOM – LP $5.9K – Unlocks in 12h ⚠️  
