@@ -1,8 +1,8 @@
 import logging
 import os
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ParseMode, BotCommand
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ParseMode, BotCommand, InputMediaPhoto
 from telegram.ext import (
-    Updater, CommandHandler, CallbackContext, CallbackQueryHandler, Dispatcher
+    Updater, CommandHandler, CallbackContext, CallbackQueryHandler, Dispatcher, Filters, MessageHandler
 )
 from flask import Flask, request
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -31,7 +31,10 @@ dispatcher: Dispatcher = updater.dispatcher
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Main menu buttons and submenus
+# User preferences storage (in-memory for demo; expand to DB for persistence)
+user_prefs = {}
+
+# Main menu and submenus as before with explanations included
 MAIN_MENU = [
     [InlineKeyboardButton("📊 Market Info", callback_data='menu_market')],
     [InlineKeyboardButton("👛 Watchlists", callback_data='menu_watchlists')],
@@ -75,6 +78,63 @@ SUBMENUS = {
     ],
 }
 
+SUBMENU_TEXTS = {
+    'menu_market': (
+        "<b>📊 Market Info Commands</b>\n\n"
+        "/max – Latest MAX token stats\n"
+        "/trending – Top trending Solana meme coins\n"
+        "/new – Newly launched tokens (<24h)"
+    ),
+    'menu_watchlists': (
+        "<b>👛 Watchlists Commands</b>\n\n"
+        "/wallets – List your watched wallets\n"
+        "/watch <wallet> – Add a wallet to watch\n"
+        "/removewallet <wallet> – Remove a wallet\n"
+        "/tokens – Show your tracked tokens\n"
+        "/addtoken $TOKEN – Add a token to track\n"
+        "/removetoken $TOKEN – Remove a token"
+    ),
+    'menu_alerts': (
+        "<b>🚨 Alerts Commands</b>\n\n"
+        "/alerts – Whale, dev, and LP alerts\n"
+        "/pnl – Your token profit/loss summary\n"
+        "/pricealerts – Price target notifications\n"
+        "/stealth – Alerts on stealthy token launches"
+    ),
+    'menu_ai': (
+        "<b>🤖 AI & Extras Commands</b>\n\n"
+        "/sentiment – Meme sentiment score of tokens\n"
+        "/tradeprompt – AI-generated trade suggestions\n"
+        "/classify – Token narrative classification"
+    ),
+    'menu_help': (
+        "<b>⚙️ Help & Settings</b>\n\n"
+        "/help – Command usage and info\n"
+        "More settings coming soon!"
+    ),
+}
+
+QUICK_HELP = {
+    'start': "Shows the welcome message and main menu.",
+    'max': "Shows the latest MAX token stats.",
+    'wallets': "Lists all wallets you are watching.",
+    'watch': "Add a wallet to your watchlist. Usage: /watch <wallet_address>",
+    'removewallet': "Remove a wallet from your watchlist. Usage: /removewallet <wallet_address>",
+    'tokens': "Lists all tokens you are tracking.",
+    'addtoken': "Add a token to your tracking list. Usage: /addtoken $TOKEN",
+    'removetoken': "Remove a token from tracking. Usage: /removetoken $TOKEN",
+    'trending': "Shows top trending Solana meme coins.",
+    'new': "Shows new token launches in the last 24h.",
+    'alerts': "Shows whale, dev, and liquidity provider alerts.",
+    'pnl': "Shows your profit/loss summary for tracked tokens.",
+    'pricealerts': "Shows active price target alerts.",
+    'stealth': "Shows info on stealth launch radar status.",
+    'sentiment': "Shows meme sentiment scores for tokens.",
+    'tradeprompt': "AI-generated trade ideas based on wallet activity.",
+    'classify': "Classifies tokens by narrative using AI.",
+    'debug': "Runs simulated debug output for testing."
+}
+
 def start(update: Update, context: CallbackContext) -> None:
     welcome_text = (
         "👋 <b>Welcome to SolMadSpecBot!</b>\n\n"
@@ -89,17 +149,7 @@ def start(update: Update, context: CallbackContext) -> None:
 
 def send_submenu(update: Update, context: CallbackContext, menu_key: str) -> None:
     submenu_buttons = SUBMENUS.get(menu_key)
-    if not submenu_buttons:
-        update.callback_query.edit_message_text("Unknown menu.", parse_mode=ParseMode.HTML)
-        return
-    text_map = {
-        'menu_market': "<b>📊 Market Info Commands</b>",
-        'menu_watchlists': "<b>👛 Watchlists Commands</b>",
-        'menu_alerts': "<b>🚨 Alerts Commands</b>",
-        'menu_ai': "<b>🤖 AI & Extras Commands</b>",
-        'menu_help': "<b>⚙️ Help & Settings</b>",
-    }
-    text = text_map.get(menu_key, "Menu")
+    text = SUBMENU_TEXTS.get(menu_key, "Menu")
     update.callback_query.edit_message_text(
         text,
         reply_markup=InlineKeyboardMarkup(submenu_buttons),
@@ -123,7 +173,6 @@ def handle_callback(update: Update, context: CallbackContext) -> None:
         send_submenu(update, context, data)
         return
 
-    # Map commands to functions or strings
     func_map = {
         'max': get_max_token_stats,
         'wallets': get_wallet_summary,
@@ -142,25 +191,31 @@ def handle_callback(update: Update, context: CallbackContext) -> None:
         'tokens': lambda: "\n".join([f"• ${t}" for t in get_tokens()]) or "No tokens tracked.",
         'stealth': lambda: "Stealth launch radar is active and will notify you of suspicious launches.",
         'pricealerts': lambda: "Price alerts are active and will notify you on target prices.",
-        # add more simple texts or implement commands as needed
     }
 
     func = func_map.get(data)
     if func:
-        if callable(func):
-            try:
-                text = func()
-            except Exception as e:
-                logger.error(f"Error in callback {data}: {e}")
-                text = "Error processing command."
-        else:
-            text = func
+        try:
+            text = func() if callable(func) else func
+        except Exception as e:
+            logger.error(f"Error in callback {data}: {e}")
+            text = "Error processing command."
     else:
         text = "Unknown command."
 
     query.edit_message_text(text, parse_mode=ParseMode.HTML)
 
-# Wallet and token command handlers (unchanged)
+def help_command(update: Update, context: CallbackContext) -> None:
+    if context.args:
+        cmd = context.args[0].lower()
+        help_text = QUICK_HELP.get(cmd)
+        if help_text:
+            update.message.reply_text(f"<b>Help for /{cmd}</b>:\n{help_text}", parse_mode=ParseMode.HTML)
+        else:
+            update.message.reply_text(f"No help found for /{cmd}.", parse_mode=ParseMode.HTML)
+    else:
+        update.message.reply_text(HELP_TEXT, parse_mode=ParseMode.HTML)
+
 def watch_command(update: Update, context: CallbackContext) -> None:
     try:
         if len(context.args) != 1:
@@ -217,13 +272,9 @@ def wallets_command(update: Update, context: CallbackContext) -> None:
     msg = "<b>👛 Watched Wallets</b>\n" + "\n".join([f"• {label}\n<code>{addr}</code>" for label, addr in wallets])
     update.message.reply_text(msg, parse_mode=ParseMode.HTML)
 
-# Help command
-def help_command(update: Update, context: CallbackContext) -> None:
-    update.message.reply_text(HELP_TEXT, parse_mode=ParseMode.HTML)
-
 # Register handlers
 dispatcher.add_handler(CommandHandler("start", start))
-dispatcher.add_handler(CommandHandler("panel", start))  # panel shows main menu too
+dispatcher.add_handler(CommandHandler("panel", start))  # alias to show main menu
 dispatcher.add_handler(CommandHandler("max", lambda u, c: u.message.reply_text(get_max_token_stats(), parse_mode=ParseMode.HTML)))
 dispatcher.add_handler(CommandHandler("wallets", wallets_command))
 dispatcher.add_handler(CommandHandler("watch", watch_command))
@@ -241,8 +292,8 @@ dispatcher.add_handler(CommandHandler("tradeprompt", lambda u, c: u.message.repl
 dispatcher.add_handler(CommandHandler("classify", lambda u, c: u.message.reply_text(get_narrative_classification(), parse_mode=ParseMode.HTML)))
 dispatcher.add_handler(CommandHandler("stealth", lambda u, c: u.message.reply_text("Stealth launch radar is active.", parse_mode=ParseMode.HTML)))
 dispatcher.add_handler(CommandHandler("pricealerts", lambda u, c: u.message.reply_text("Price alerts are active.", parse_mode=ParseMode.HTML)))
-dispatcher.add_handler(CallbackQueryHandler(handle_callback))
 dispatcher.add_handler(CommandHandler("help", help_command))
+dispatcher.add_handler(CallbackQueryHandler(handle_callback))
 
 # Scheduler jobs
 def send_daily_report(bot):
