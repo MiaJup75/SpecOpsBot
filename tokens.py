@@ -1,5 +1,6 @@
 from db import add_token, get_tokens, remove_token
 from token_config import get_token_config
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
 def handle_add_token(update, context):
     try:
@@ -17,13 +18,7 @@ def handle_tokens(update, context):
     if not tokens:
         update.message.reply_text("No tokens are currently being tracked.")
         return
-
-    # Build clickable inline keyboard with tokens
-    buttons = []
-    for token in tokens:
-        buttons.append([InlineKeyboardButton(f"${token}", callback_data=f"token_{token}")])
-
-    # Send list with buttons
+    buttons = [[InlineKeyboardButton(f"${token}", callback_data=f"token_{token}")] for token in tokens]
     update.message.reply_text(
         "<b>📋 Tracked Tokens</b>",
         reply_markup=InlineKeyboardMarkup(buttons),
