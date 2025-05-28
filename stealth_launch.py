@@ -1,13 +1,13 @@
-import os
 import requests
 import logging
 from telegram import Bot
 from time import time
+import os
 
 logger = logging.getLogger(__name__)
 
 _alerted_tokens = {}
-ALERT_COOLDOWN_SECONDS = 1800  # 30 minutes
+ALERT_COOLDOWN_SECONDS = 1800
 
 def fetch_new_tokens():
     url = "https://api.dexscreener.com/latest/dex/tokens?chain=solana"
@@ -16,6 +16,13 @@ def fetch_new_tokens():
         resp.raise_for_status()
         tokens = resp.json().get("tokens", [])
         return tokens
+    except requests.HTTPError as e:
+        if e.response.status_code == 404:
+            logger.warning("Dexscreener API endpoint not found (404). Skipping stealth launch scan.")
+            return []
+        else:
+            logger.error(f"[StealthLaunch] HTTP error: {e}")
+            return []
     except Exception as e:
         logger.error(f"[StealthLaunch] Failed fetching tokens: {e}")
         return []
@@ -68,4 +75,7 @@ def scan_new_tokens(bot: Bot):
                 f"Risk Flags: {flags_text}\n"
                 f"More info: {url}"
             )
-            bot.send_message(chat_id=chat_id, text=msg, parse_mode="HTML")
+            try:
+                bot.send_message(chat_id=chat_id, text=msg, parse_mode="HTML")
+            except Exception as e:
+                logger.error(f"[StealthLaunch] Failed to send alert for {symbol}: {e}")
