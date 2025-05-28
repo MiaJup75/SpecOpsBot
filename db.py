@@ -1,5 +1,5 @@
 import sqlite3
-import datetime
+from datetime import datetime, date
 
 DB_NAME = "solmad.db"
 
@@ -19,28 +19,29 @@ def init_db():
             symbol TEXT PRIMARY KEY
         )
     ''')
-    # Users table for limits and tracking
+
+    # Trades table for trade execution logging
     c.execute('''
-        CREATE TABLE IF NOT EXISTS users (
-            user_id INTEGER PRIMARY KEY,
-            daily_spend_limit REAL DEFAULT 1000,
-            daily_spent REAL DEFAULT 0,
-            last_spent_reset TEXT
-        )
-    ''')
-    # Trade history log
-    c.execute('''
-        CREATE TABLE IF NOT EXISTS trade_history (
+        CREATE TABLE IF NOT EXISTS trades (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER,
-            timestamp TEXT,
-            trade_type TEXT,
+            user_id TEXT,
             token_symbol TEXT,
             amount REAL,
+            side TEXT,
             price REAL,
-            total_value REAL
+            timestamp TEXT
         )
     ''')
+
+    # Users table for customizable limits
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS users (
+            user_id TEXT PRIMARY KEY,
+            daily_sell_limit REAL DEFAULT 10000,
+            stop_loss_pct REAL DEFAULT 10
+        )
+    ''')
+
     conn.commit()
     conn.close()
 
@@ -81,73 +82,60 @@ def remove_token(symbol):
     conn.commit()
     conn.close()
 
-# User limits and spend tracking
-
-def add_user(user_id, daily_spend_limit=1000):
+def log_trade(user_id: str, token_symbol: str, amount: float, side: str, price: float | None, timestamp: datetime):
     conn = sqlite3.connect(DB_NAME)
     c = conn.cursor()
-    today = datetime.date.today().isoformat()
-    c.execute(
-        "INSERT OR IGNORE INTO users (user_id, daily_spend_limit, daily_spent, last_spent_reset) VALUES (?, ?, ?, ?)",
-        (user_id, daily_spend_limit, 0, today)
-    )
+    c.execute("""
+        INSERT INTO trades (user_id, token_symbol, amount, side, price, timestamp)
+        VALUES (?, ?, ?, ?, ?, ?)
+    """, (user_id, token_symbol.upper(), amount, side, price, timestamp.isoformat()))
     conn.commit()
     conn.close()
 
-def get_user_limits(user_id):
+def get_trade_history(user_id: str, token_symbol: str, start_date: date):
     conn = sqlite3.connect(DB_NAME)
     c = conn.cursor()
-    c.execute("SELECT daily_spend_limit, daily_spent, last_spent_reset FROM users WHERE user_id=?", (user_id,))
+    c.execute("""
+        SELECT user_id, token_symbol, amount, side, price, timestamp FROM trades
+        WHERE user_id = ? AND token_symbol = ? AND date(timestamp) >= ?
+    """, (user_id, token_symbol.upper(), start_date.isoformat()))
+    rows = c.fetchall()
+    conn.close()
+    trades = []
+    for row in rows:
+        trades.append({
+            "user_id": row[0],
+            "token_symbol": row[1],
+            "amount": row[2],
+            "side": row[3],
+            "price": row[4],
+            "timestamp": datetime.fromisoformat(row[5])
+        })
+    return trades
+
+def get_user_limits(user_id: str) -> dict:
+    conn = sqlite3.connect(DB_NAME)
+    c = conn.cursor()
+    c.execute("""
+        SELECT daily_sell_limit, stop_loss_pct FROM users WHERE user_id = ?
+    """, (user_id,))
     row = c.fetchone()
     conn.close()
     if row:
-        limit, spent, reset_date = row
-        today = datetime.date.today().isoformat()
-        if reset_date != today:
-            reset_daily_spent(user_id)
-            spent = 0
-        return limit, spent
+        return {"daily_sell_limit": row[0], "stop_loss_pct": row[1]}
     else:
-        add_user(user_id)
-        return 1000, 0
+        # Return defaults if no user set limits found
+        return {"daily_sell_limit": 10000, "stop_loss_pct": 10}
 
-def reset_daily_spent(user_id):
+def set_user_limits(user_id: str, daily_sell_limit: float, stop_loss_pct: float):
     conn = sqlite3.connect(DB_NAME)
     c = conn.cursor()
-    today = datetime.date.today().isoformat()
-    c.execute("UPDATE users SET daily_spent=0, last_spent_reset=? WHERE user_id=?", (today, user_id))
+    c.execute("""
+        INSERT INTO users (user_id, daily_sell_limit, stop_loss_pct)
+        VALUES (?, ?, ?)
+        ON CONFLICT(user_id) DO UPDATE SET
+            daily_sell_limit=excluded.daily_sell_limit,
+            stop_loss_pct=excluded.stop_loss_pct
+    """, (user_id, daily_sell_limit, stop_loss_pct))
     conn.commit()
     conn.close()
-
-def update_daily_spent(user_id, amount):
-    conn = sqlite3.connect(DB_NAME)
-    c = conn.cursor()
-    c.execute("UPDATE users SET daily_spent = daily_spent + ? WHERE user_id=?", (amount, user_id))
-    conn.commit()
-    conn.close()
-
-# Trade history logging
-
-def log_trade(user_id, trade_type, token_symbol, amount, price):
-    conn = sqlite3.connect(DB_NAME)
-    c = conn.cursor()
-    timestamp = datetime.datetime.utcnow().isoformat()
-    total_value = amount * price
-    c.execute('''
-        INSERT INTO trade_history (user_id, timestamp, trade_type, token_symbol, amount, price, total_value)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-    ''', (user_id, timestamp, trade_type, token_symbol.upper(), amount, price, total_value))
-    conn.commit()
-    conn.close()
-
-def get_trade_history(user_id, limit=20):
-    conn = sqlite3.connect(DB_NAME)
-    c = conn.cursor()
-    c.execute('''
-        SELECT timestamp, trade_type, token_symbol, amount, price, total_value
-        FROM trade_history WHERE user_id=?
-        ORDER BY timestamp DESC LIMIT ?
-    ''', (user_id, limit))
-    rows = c.fetchall()
-    conn.close()
-    return rows
