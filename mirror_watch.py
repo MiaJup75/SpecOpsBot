@@ -23,7 +23,7 @@ def check_mirror_wallets(bot: Bot):
     for label, address in wallets:
         try:
             activity = fetch_wallet_activity(address)
-            # TODO: Add real logic to detect buys/sells and notify
+            # TODO: implement buy/sell detection and notify logic here
             msg = f"🔍 Checked wallet '{label}' ({address[:6]}...{address[-6:]}) - Recent activity found."
             bot.send_message(chat_id=chat_id, text=msg)
         except Exception as e:
