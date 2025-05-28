@@ -1,20 +1,22 @@
 import os
 import requests
 from telegram import Bot
+import logging
+
+logger = logging.getLogger(__name__)
 
 def fetch_gas_price():
-    # Example: fetch Solana gas price or network congestion from an API or RPC
-    # Placeholder returns a mock gas price in lamports
     try:
-        # Replace with real API endpoint or RPC call
-        return 5000  # Mock lamports/gas price
+        # Replace with actual RPC or API call to get current Solana gas price
+        # Example dummy value:
+        return 5000  # lamports
     except Exception as e:
-        print(f"[GasTiming] Error fetching gas price: {e}")
+        logger.error(f"[GasTiming] Error fetching gas price: {e}")
         return None
 
 def check_mev_conditions():
-    # Placeholder for MEV front-run or congestion detection logic
-    # Return True if conditions suggest MEV risk, False otherwise
+    # Implement MEV risk detection logic here
+    # Return True if MEV risk is detected, False otherwise
     return False
 
 def check_gas_and_mev(bot: Bot):
