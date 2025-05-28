@@ -1,22 +1,77 @@
-import requests
 import os
-from telegram import Bot
+import requests
 import logging
+from telegram import Bot
+from time import time
 
 logger = logging.getLogger(__name__)
 
+# To track tokens already alerted in the last X period
+_alerted_tokens = {}
+
+# Configurable alert cooldown (e.g. 30 minutes)
+ALERT_COOLDOWN_SECONDS = 1800
+
+def fetch_new_tokens():
+    """Fetch recent token launches from Dexscreener or other API."""
+    url = "https://api.dexscreener.com/latest/dex/tokens?chain=solana"
+    try:
+        resp = requests.get(url, timeout=10)
+        resp.raise_for_status()
+        tokens = resp.json().get("tokens", [])
+        return tokens
+    except Exception as e:
+        logger.error(f"[StealthLaunch] Failed fetching tokens: {e}")
+        return []
+
+def check_token_risk(token):
+    """Basic heuristics to flag risky tokens."""
+    lp = token.get("liquidity", 0)
+    locked = token.get("locked", False)
+    social_score = token.get("socialScore", 0)  # Placeholder for social metric
+
+    risk_flags = []
+    if lp < 5000:  # Small LP threshold
+        risk_flags.append("Low LP")
+    if not locked:
+        risk_flags.append("No LP Lock")
+    if social_score < 10:
+        risk_flags.append("Low Social")
+
+    return risk_flags
+
+def should_alert(token_symbol):
+    """Avoid repeat alerts within cooldown period."""
+    now = time()
+    last_alert = _alerted_tokens.get(token_symbol)
+    if last_alert and now - last_alert < ALERT_COOLDOWN_SECONDS:
+        return False
+    _alerted_tokens[token_symbol] = now
+    return True
+
 def scan_new_tokens(bot: Bot):
     chat_id = os.getenv("CHAT_ID")
-    try:
-        # Example API call to fetch new tokens
-        response = requests.get("https://api.example.com/new-tokens", timeout=10)
-        response.raise_for_status()
-        new_tokens = response.json().get("tokens", [])
-        # Deduplicate, scan honeypot, social signals etc. here
+    tokens = fetch_new_tokens()
+    for token in tokens:
+        symbol = token.get("symbol", "").upper()
+        if not symbol:
+            continue
 
-        for token in new_tokens:
-            # Example alert
-            msg = f"🆕 New token detected: {token.get('symbol')} with LP ${token.get('lp')}"
-            bot.send_message(chat_id=chat_id, text=msg)
-    except Exception as e:
-        logger.error(f"[StealthLaunch] Error scanning new tokens: {e}")
+        if not should_alert(symbol):
+            continue
+
+        risk_flags = check_token_risk(token)
+        if risk_flags:
+            lp = token.get("liquidity", 0)
+            price = token.get("price", 0)
+            url = token.get("url", "https://dexscreener.com")  # Dexscreener link if available
+            flags_text = ", ".join(risk_flags)
+
+            msg = (
+                f"🚨 <b>New Token Alert: ${symbol}</b>\n"
+                f"Price: ${price:.6f}\n"
+                f"Liquidity: ${lp:,.0f}\n"
+                f"Risk Flags: {flags_text}\n"
+                f"More info: {url}"
+            )
+            bot.send_message(chat_id=chat_id, text=msg, parse_mode="HTML")
