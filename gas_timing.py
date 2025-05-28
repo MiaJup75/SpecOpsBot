@@ -1,41 +1,45 @@
 import os
 import requests
-from telegram import Bot
 import logging
+from telegram import Bot
 
 logger = logging.getLogger(__name__)
 
+SOLSCAN_GAS_API = "https://public-api.solscan.io/gas-fees/recent"
+
 def fetch_gas_price():
-    """
-    Fetch current Solana gas price or network congestion info.
-    Replace the mock implementation with real API or RPC calls.
-    """
     try:
-        # Example placeholder: You can replace this with a real API call to Solana RPC or analytics API
-        # e.g., fetch recent block fee or congestion metrics
-        # For now, return a mock value
-        return 5000  # Gas price in lamports (mock)
+        response = requests.get(SOLSCAN_GAS_API, timeout=5)
+        response.raise_for_status()
+        data = response.json()
+        # Adjust field names depending on actual API response
+        avg_fee = data.get("averageFee")
+        max_fee = data.get("maxFee")
+        min_fee = data.get("minFee")
+        return avg_fee, max_fee, min_fee
     except Exception as e:
-        logger.error(f"[GasTiming] Error fetching gas price: {e}")
-        return None
+        logger.error(f"[GasTiming] Failed to fetch gas prices: {e}")
+        return None, None, None
 
 def check_mev_conditions():
-    """
-    Placeholder for MEV (Miner Extractable Value) or front-running detection logic.
-    Return True if risk is detected, False otherwise.
-    """
-    # Implement your detection or integrate with MEV APIs if available
+    # Placeholder for advanced MEV detection, can integrate third-party APIs later
     return False
 
 def check_gas_and_mev(bot: Bot):
     chat_id = os.getenv("CHAT_ID")
-    gas_price = fetch_gas_price()
+    avg_fee, max_fee, min_fee = fetch_gas_price()
     mev_risk = check_mev_conditions()
 
-    msg_lines = ["⛽ <b>Gas & MEV Monitor</b>"]
+    if avg_fee is None:
+        bot.send_message(chat_id=chat_id, text="⚠️ Unable to fetch gas fee data at this time.")
+        return
 
-    if gas_price is not None:
-        msg_lines.append(f"Current Gas Price: {gas_price} lamports")
+    msg_lines = [
+        "⛽ <b>Solana Gas & MEV Monitor</b>",
+        f"Average Fee: {avg_fee} lamports",
+        f"Max Fee: {max_fee} lamports",
+        f"Min Fee: {min_fee} lamports",
+    ]
 
     if mev_risk:
         msg_lines.append("⚠️ MEV risk detected! Consider delaying transactions.")
