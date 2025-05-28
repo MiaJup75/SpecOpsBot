@@ -1,8 +1,8 @@
-import os
 import requests
+import os
 import logging
-from telegram import Bot
 from time import time
+from telegram import Bot
 
 logger = logging.getLogger(__name__)
 _alerted_tokens = {}
@@ -13,22 +13,28 @@ def fetch_new_tokens():
     try:
         resp = requests.get(url, timeout=10)
         resp.raise_for_status()
-        return resp.json().get("tokens", [])
+        tokens = resp.json().get("tokens", [])
+        return tokens
     except Exception as e:
         logger.error(f"[StealthLaunch] Failed fetching tokens: {e}")
         return []
 
 def check_token_risk(token):
+    risk_flags = []
     lp = token.get("liquidity", 0)
     locked = token.get("locked", False)
     social_score = token.get("socialScore", 0)
-    risk_flags = []
+
     if lp < 5000:
         risk_flags.append("Low LP")
     if not locked:
         risk_flags.append("No LP Lock")
     if social_score < 10:
         risk_flags.append("Low Social")
+
+    if token.get("honeypotRisk", False):
+        risk_flags.append("Honeypot Risk")
+
     return risk_flags
 
 def should_alert(token_symbol):
@@ -46,12 +52,14 @@ def scan_new_tokens(bot: Bot):
         symbol = token.get("symbol", "").upper()
         if not symbol or not should_alert(symbol):
             continue
+
         risk_flags = check_token_risk(token)
         if risk_flags:
             lp = token.get("liquidity", 0)
             price = token.get("price", 0)
             url = token.get("url", "https://dexscreener.com")
             flags_text = ", ".join(risk_flags)
+
             msg = (
                 f"🚨 <b>New Token Alert: ${symbol}</b>\n"
                 f"Price: ${price:.6f}\n"
