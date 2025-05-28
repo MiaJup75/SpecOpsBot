@@ -1,45 +1,43 @@
 import logging
-from datetime import datetime
-from db import log_trade, get_user_limits, get_trade_history
-from wallet import Wallet
+from datetime import datetime, date
+from db import log_trade, get_trade_history, get_user_limits
 
 logger = logging.getLogger(__name__)
-wallet = Wallet()
 
-DEFAULT_DAILY_SELL_LIMIT = 10000  # USD
-DEFAULT_STOP_LOSS_PERCENT = 10  # Percent
+# Simulated external sell function (replace with real trade execution)
+def execute_sell_order(token_symbol: str, amount: float) -> bool:
+    logger.info(f"Executing sell order for {amount} {token_symbol}")
+    # Integrate with exchange or DEX here
+    return True  # Assume success for now
 
-def execute_sell(token_symbol: str, amount: float, user_id: str) -> bool:
-    try:
-        user_limits = get_user_limits(user_id)
-        daily_limit = user_limits.get("daily_sell_limit", DEFAULT_DAILY_SELL_LIMIT)
-        stop_loss_pct = user_limits.get("stop_loss_pct", DEFAULT_STOP_LOSS_PERCENT)
+def can_sell(user_id: str, token_symbol: str, amount: float) -> bool:
+    limits = get_user_limits(user_id)
+    daily_limit = limits.get("daily_sell_limit", 10000)
+    stop_loss_pct = limits.get("stop_loss_pct", 10)
 
-        today = datetime.utcnow().date()
-        trades_today = get_trade_history(user_id, token_symbol, start_date=today)
-        total_sold_today = sum(t['amount'] for t in trades_today if t['side'] == 'sell')
+    today = date.today()
+    trades_today = get_trade_history(user_id, token_symbol, today)
 
-        if total_sold_today + amount > daily_limit:
-            logger.warning(f"User {user_id} exceeded daily sell limit.")
-            return False
+    total_sold_today = sum(t['amount'] for t in trades_today if t['side'] == 'sell')
 
-        # TODO: Add stop loss price check here if available
+    if total_sold_today + amount > daily_limit:
+        logger.warning(f"User {user_id} exceeded daily sell limit for {token_symbol}")
+        return False
+    # Implement stop-loss logic if price data is available
+    # (e.g., compare current price with average buy price)
 
-        success = wallet.swap_token(token_symbol, amount)
-        if not success:
-            logger.error(f"Swap failed for {token_symbol} amount {amount}")
-            return False
+    return True
 
-        log_trade(
-            user_id=user_id,
-            token_symbol=token_symbol,
-            amount=amount,
-            side="sell",
-            price=None,
-            timestamp=datetime.utcnow()
-        )
-        logger.info(f"Sell executed for user {user_id}: {amount} {token_symbol}")
+def execute_sell(user_id: str, token_symbol: str, amount: float, price: float | None = None):
+    if not can_sell(user_id, token_symbol, amount):
+        logger.info(f"Sell order blocked for user {user_id} on {token_symbol} amount {amount}")
+        return False
+
+    success = execute_sell_order(token_symbol, amount)
+    if success:
+        log_trade(user_id, token_symbol, amount, 'sell', price, datetime.utcnow())
+        logger.info(f"Logged sell trade for user {user_id} on {token_symbol} amount {amount}")
         return True
-    except Exception as e:
-        logger.error(f"Error executing sell: {e}")
+    else:
+        logger.error(f"Failed to execute sell for user {user_id} on {token_symbol}")
         return False
