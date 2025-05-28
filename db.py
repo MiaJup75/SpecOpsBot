@@ -6,30 +6,26 @@ DB_NAME = "solmad.db"
 def init_db():
     conn = sqlite3.connect(DB_NAME)
     c = conn.cursor()
-    # Wallet watchlist with labels
     c.execute('''
         CREATE TABLE IF NOT EXISTS wallets (
             label TEXT,
             address TEXT PRIMARY KEY
         )
     ''')
-    # Token tracking list
     c.execute('''
         CREATE TABLE IF NOT EXISTS tokens (
             symbol TEXT PRIMARY KEY
         )
     ''')
-    # User trade limits table
     c.execute('''
-        CREATE TABLE IF NOT EXISTS user_limits (
+        CREATE TABLE IF NOT EXISTS users (
             user_id TEXT PRIMARY KEY,
-            daily_sell_limit REAL,
-            stop_loss_pct REAL
+            daily_sell_limit REAL DEFAULT 0,
+            stop_loss_pct REAL DEFAULT 0
         )
     ''')
-    # Trade history table
     c.execute('''
-        CREATE TABLE IF NOT EXISTS trade_history (
+        CREATE TABLE IF NOT EXISTS trades (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id TEXT,
             token_symbol TEXT,
@@ -42,7 +38,6 @@ def init_db():
     conn.commit()
     conn.close()
 
-# Wallets
 def add_wallet(label, address):
     conn = sqlite3.connect(DB_NAME)
     c = conn.cursor()
@@ -58,7 +53,6 @@ def get_wallets():
     conn.close()
     return results
 
-# Tokens
 def add_token(symbol):
     conn = sqlite3.connect(DB_NAME)
     c = conn.cursor()
@@ -81,23 +75,23 @@ def remove_token(symbol):
     conn.commit()
     conn.close()
 
-# User Limits
+# User limits for trade automation
 def get_user_limits(user_id):
     conn = sqlite3.connect(DB_NAME)
     c = conn.cursor()
-    c.execute("SELECT daily_sell_limit, stop_loss_pct FROM user_limits WHERE user_id = ?", (user_id,))
+    c.execute("SELECT daily_sell_limit, stop_loss_pct FROM users WHERE user_id = ?", (user_id,))
     row = c.fetchone()
     conn.close()
     if row:
         return {"daily_sell_limit": row[0], "stop_loss_pct": row[1]}
     else:
-        return {}
+        return {"daily_sell_limit": 0, "stop_loss_pct": 0}
 
 def set_user_limits(user_id, daily_sell_limit, stop_loss_pct):
     conn = sqlite3.connect(DB_NAME)
     c = conn.cursor()
     c.execute("""
-        INSERT INTO user_limits (user_id, daily_sell_limit, stop_loss_pct)
+        INSERT INTO users (user_id, daily_sell_limit, stop_loss_pct)
         VALUES (?, ?, ?)
         ON CONFLICT(user_id) DO UPDATE SET
             daily_sell_limit=excluded.daily_sell_limit,
@@ -106,14 +100,14 @@ def set_user_limits(user_id, daily_sell_limit, stop_loss_pct):
     conn.commit()
     conn.close()
 
-# Trade History
+# Trade history logging and retrieval
 def log_trade(user_id, token_symbol, side, amount, price):
     conn = sqlite3.connect(DB_NAME)
     c = conn.cursor()
     c.execute("""
-        INSERT INTO trade_history (user_id, token_symbol, side, amount, price, timestamp)
-        VALUES (?, ?, ?, ?, ?, ?)
-    """, (user_id, token_symbol, side, amount, price, datetime.datetime.utcnow()))
+        INSERT INTO trades (user_id, token_symbol, side, amount, price)
+        VALUES (?, ?, ?, ?, ?)
+    """, (user_id, token_symbol.upper(), side, amount, price))
     conn.commit()
     conn.close()
 
@@ -121,33 +115,18 @@ def get_trade_history(user_id, token_symbol):
     conn = sqlite3.connect(DB_NAME)
     c = conn.cursor()
     c.execute("""
-        SELECT side, amount, price, timestamp FROM trade_history
+        SELECT side, amount, price, timestamp FROM trades
         WHERE user_id = ? AND token_symbol = ?
         ORDER BY timestamp DESC
-        LIMIT 50
-    """, (user_id, token_symbol))
+    """, (user_id, token_symbol.upper()))
     rows = c.fetchall()
     conn.close()
-    # Convert to list of dicts
-    trades = []
+    trade_list = []
     for row in rows:
-        trades.append({
+        trade_list.append({
             "side": row[0],
             "amount": row[1],
             "price": row[2],
-            "timestamp": row[3],
+            "timestamp": datetime.datetime.strptime(row[3], "%Y-%m-%d %H:%M:%S")
         })
-    return trades
-
-def get_daily_trade_volume(user_id, token_symbol):
-    conn = sqlite3.connect(DB_NAME)
-    c = conn.cursor()
-    today = datetime.datetime.utcnow().date()
-    start_time = datetime.datetime.combine(today, datetime.time.min)
-    c.execute("""
-        SELECT SUM(amount) FROM trade_history
-        WHERE user_id = ? AND token_symbol = ? AND side = 'sell' AND timestamp >= ?
-    """, (user_id, token_symbol, start_time))
-    result = c.fetchone()
-    conn.close()
-    return result[0] if result[0] is not None else 0
+    return trade_list
