@@ -1,6 +1,9 @@
 import logging
 import os
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ParseMode, BotCommand, Bot
+from telegram import (
+    Update, InlineKeyboardButton, InlineKeyboardMarkup, ParseMode,
+    BotCommand, Bot
+)
 from telegram.ext import (
     Updater, CommandHandler, CallbackContext, CallbackQueryHandler, Dispatcher
 )
@@ -8,21 +11,18 @@ from flask import Flask, request
 from apscheduler.schedulers.background import BackgroundScheduler
 import pytz
 
+# Import your existing data and logic functions here
 from utils import (
     get_max_token_stats, get_trending_coins, get_new_tokens, get_suspicious_activity_alerts,
     get_wallet_summary, get_full_daily_report, HELP_TEXT, simulate_debug_output,
     get_pnl_report, get_sentiment_scores, get_trade_prompt, get_narrative_classification
 )
-from db import (
-    init_db, add_wallet, get_wallets, add_token, get_tokens, remove_token,
-    add_user, get_trade_history
-)
+from db import init_db, add_wallet, get_wallets, add_token, get_tokens, remove_token
 from price_alerts import check_price_targets
 from stealth_launch import scan_new_tokens
 from mirror_watch import check_mirror_wallets
 from botnet import check_botnet_activity
 from wallet import Wallet
-from trade_executor import TradeExecutor
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -34,37 +34,113 @@ app = Flask(__name__)
 updater = Updater(token=TOKEN, use_context=True)
 dispatcher: Dispatcher = updater.dispatcher
 
+# === Menus ===
+
 def get_main_keyboard():
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("💰 MAX", callback_data='max'),
-         InlineKeyboardButton("👛 Wallets", callback_data='wallets')],
-        [InlineKeyboardButton("📈 Trending", callback_data='trending'),
-         InlineKeyboardButton("🆕 New", callback_data='new')],
-        [InlineKeyboardButton("🚨 Alerts", callback_data='alerts'),
-         InlineKeyboardButton("📊 PnL", callback_data='pnl')],
-        [InlineKeyboardButton("🧠 Meme Sentiment", callback_data='sentiment'),
-         InlineKeyboardButton("🤖 Trade Prompt", callback_data='tradeprompt')],
-        [InlineKeyboardButton("🔠 Meme Classification", callback_data='classify')],
-        [InlineKeyboardButton("➕ Add Wallet", switch_inline_query_current_chat='/watch '),
-         InlineKeyboardButton("➕ Add Token", switch_inline_query_current_chat='/addtoken $')],
-        [InlineKeyboardButton("📋 View Tokens", switch_inline_query_current_chat='/tokens')]
+        [InlineKeyboardButton("📊 Tokens & Markets", callback_data='menu_tokens')],
+        [InlineKeyboardButton("👛 Wallets & Holdings", callback_data='menu_wallets')],
+        [InlineKeyboardButton("🤖 Analytics & AI", callback_data='menu_analytics')],
+        [InlineKeyboardButton("💼 Trading & Limits", callback_data='menu_trading')],
+        [InlineKeyboardButton("⚙️ Miscellaneous", callback_data='menu_misc')],
     ])
 
-def start(update: Update, context: CallbackContext) -> None:
-    update.message.reply_text(
-        """<b>👋 Welcome to SolMadSpecBot!</b>
-
-Use the buttons below or type:
-/max /wallets /trending  
-/new /alerts /debug  
-/pnl /sentiment /tradeprompt /classify  
-/watch &lt;wallet&gt; /addtoken $TOKEN /tokens  
-/setlimit &lt;usd_amount&gt; /tradehistory
-
-Daily updates sent at 9AM Bangkok time (GMT+7).""",
-        reply_markup=get_main_keyboard(),
-        parse_mode=ParseMode.HTML
+def get_tokens_submenu():
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("🐶 MAX Token", callback_data='token_MAX')],
+        [InlineKeyboardButton("📈 Trending Coins", callback_data='trending')],
+        [InlineKeyboardButton("🆕 New Tokens", callback_data='new')],
+        [InlineKeyboardButton("🚨 Alerts", callback_data='alerts')],
+        [InlineKeyboardButton("📋 Manage Tokens", callback_data='tokens')],
+        [InlineKeyboardButton("⬅️ Back", callback_data='main_menu')],
+    ])
+    text = (
+        "<b>Tokens & Markets</b>\n\n"
+        "• View MAX token stats\n"
+        "• Check trending meme coins\n"
+        "• Discover newly launched tokens\n"
+        "• View suspicious alerts\n"
+        "• Manage your tracked tokens"
     )
+    return text, keyboard
+
+def get_wallets_submenu():
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("👛 Wallets", callback_data='wallets')],
+        [InlineKeyboardButton("➕ Add Wallet", switch_inline_query_current_chat='/watch ')],
+        [InlineKeyboardButton("📊 PnL Report", callback_data='pnl')],
+        [InlineKeyboardButton("⬅️ Back", callback_data='main_menu')],
+    ])
+    text = (
+        "<b>Wallets & Holdings</b>\n\n"
+        "• View watched wallets\n"
+        "• Add a new wallet to track\n"
+        "• Check profit & loss reports"
+    )
+    return text, keyboard
+
+def get_analytics_submenu():
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("🧠 Sentiment Scores", callback_data='sentiment')],
+        [InlineKeyboardButton("🤖 Trade Prompt", callback_data='tradeprompt')],
+        [InlineKeyboardButton("🔠 Classification", callback_data='classify')],
+        [InlineKeyboardButton("⬅️ Back", callback_data='main_menu')],
+    ])
+    text = (
+        "<b>Analytics & AI</b>\n\n"
+        "• Meme sentiment scores\n"
+        "• AI trade prompts\n"
+        "• Token narrative classification"
+    )
+    return text, keyboard
+
+def get_trading_submenu():
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("💼 Set Limits", callback_data='set_limits')],
+        [InlineKeyboardButton("📊 View Limits", callback_data='view_limits')],
+        [InlineKeyboardButton("📜 Trade History", callback_data='trade_history')],
+        [InlineKeyboardButton("⬅️ Back", callback_data='main_menu')],
+    ])
+    text = (
+        "<b>Trading & Limits</b>\n\n"
+        "• Set your trade limits\n"
+        "• View current limits\n"
+        "• Review your trade history"
+    )
+    return text, keyboard
+
+def get_misc_submenu():
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("🐞 Debug", callback_data='debug')],
+        [InlineKeyboardButton("🔄 Panel", callback_data='panel')],
+        [InlineKeyboardButton("⬅️ Back", callback_data='main_menu')],
+    ])
+    text = (
+        "<b>Miscellaneous</b>\n\n"
+        "• Debug simulation output\n"
+        "• Show main control panel"
+    )
+    return text, keyboard
+
+# === Token Detail Viewer ===
+
+def get_token_detail(symbol: str) -> str:
+    # You can expand this with API calls or DB info
+    if symbol.upper() == "MAX":
+        return get_max_token_stats()
+    else:
+        return f"<b>{symbol.upper()}</b> details not available yet."
+
+# === Command Handlers ===
+
+def start(update: Update, context: CallbackContext) -> None:
+    welcome_text = (
+        "<b>👋 Welcome to SolMadSpecBot!</b>\n\n"
+        "Use the menu below to explore features.\n"
+        "Or type commands like /max, /wallets, /tokens.\n"
+        "Daily updates sent at 9AM Bangkok time (GMT+7)."
+    )
+    update.message.reply_text(welcome_text, reply_markup=get_main_keyboard(), parse_mode='HTML')
 
 def panel_command(update: Update, context: CallbackContext) -> None:
     update.message.reply_text(
@@ -76,7 +152,37 @@ def panel_command(update: Update, context: CallbackContext) -> None:
 def handle_callback(update: Update, context: CallbackContext) -> None:
     query = update.callback_query
     query.answer()
-    command = query.data
+    data = query.data
+
+    if data == 'main_menu':
+        query.edit_message_text(
+            text="🔘 <b>Main Menu</b>\nSelect a category:",
+            reply_markup=get_main_keyboard(),
+            parse_mode='HTML'
+        )
+        return
+
+    submenu_map = {
+        'menu_tokens': get_tokens_submenu,
+        'menu_wallets': get_wallets_submenu,
+        'menu_analytics': get_analytics_submenu,
+        'menu_trading': get_trading_submenu,
+        'menu_misc': get_misc_submenu,
+    }
+
+    if data in submenu_map:
+        text, keyboard = submenu_map[data]()
+        query.edit_message_text(text=text, reply_markup=keyboard, parse_mode='HTML')
+        return
+
+    if data.startswith("token_"):
+        token_symbol = data.split("_", 1)[1]
+        detail_text = get_token_detail(token_symbol)
+        back_button = InlineKeyboardMarkup([
+            [InlineKeyboardButton("⬅️ Back to Tokens", callback_data='menu_tokens')]
+        ])
+        query.edit_message_text(text=detail_text, reply_markup=back_button, parse_mode='HTML')
+        return
 
     func_map = {
         'max': get_max_token_stats,
@@ -87,114 +193,42 @@ def handle_callback(update: Update, context: CallbackContext) -> None:
         'pnl': get_pnl_report,
         'sentiment': get_sentiment_scores,
         'tradeprompt': get_trade_prompt,
-        'classify': get_narrative_classification
+        'classify': get_narrative_classification,
+        'set_limits': lambda: "Use /setlimit <daily_sell_limit> <stop_loss_pct> to update your limits.",
+        'view_limits': lambda: "Use /viewlimits to see your current limits.",
+        'trade_history': lambda: "Use /tradehistory <TOKEN> to view your trade history.",
+        'debug': simulate_debug_output,
+        'panel': lambda: "Use /panel to see the main control panel.",
     }
 
-    result = func_map.get(command, lambda: "Unknown command")()
-    context.bot.send_message(chat_id=query.message.chat.id, text=result, parse_mode=ParseMode.HTML)
-
-def watch_command(update: Update, context: CallbackContext) -> None:
-    if len(context.args) < 1:
-        update.message.reply_text("Usage: /watch <wallet_address> [nickname]")
-        return
-    address = context.args[0]
-    label = " ".join(context.args[1:]) if len(context.args) > 1 else f"Wallet {address[:4]}...{address[-4:]}"
-    try:
-        add_wallet(label, address)
-        update.message.reply_text(f"✅ Watching wallet:\n<code>{address}</code>\nNickname: {label}", parse_mode=ParseMode.HTML)
-    except Exception:
-        update.message.reply_text("⚠️ Error adding wallet.")
-
-def wallets_command(update: Update, context: CallbackContext) -> None:
-    wallets = get_wallets()
-    if not wallets:
-        update.message.reply_text("No wallets being tracked.")
-        return
-    msg = "<b>👛 Watched Wallets</b>\n" + "\n".join([f"• {label}\n<code>{addr}</code>" for label, addr in wallets])
-    update.message.reply_text(msg, parse_mode=ParseMode.HTML)
-
-def addtoken_command(update: Update, context: CallbackContext) -> None:
-    if len(context.args) != 1:
-        update.message.reply_text("Usage: /addtoken $TOKEN")
-        return
-    symbol = context.args[0].lstrip("$")
-    try:
-        add_token(symbol)
-        update.message.reply_text(f"✅ Watching token: ${symbol.upper()}")
-    except Exception:
-        update.message.reply_text("⚠️ Error adding token.")
-
-def tokens_command(update: Update, context: CallbackContext) -> None:
-    tokens = get_tokens()
-    if not tokens:
-        update.message.reply_text("No tokens being watched.")
-        return
-    token_list = "\n".join([f"• ${t}" for t in tokens])
-    update.message.reply_text(f"<b>📋 Watched Tokens</b>\n{token_list}", parse_mode=ParseMode.HTML)
-
-def removetoken_command(update: Update, context: CallbackContext) -> None:
-    if len(context.args) != 1:
-        update.message.reply_text("Usage: /removetoken $TOKEN")
-        return
-    symbol = context.args[0].lstrip("$")
-    try:
-        remove_token(symbol)
-        update.message.reply_text(f"✅ Removed token: ${symbol.upper()}")
-    except Exception:
-        update.message.reply_text("⚠️ Error removing token.")
-
-def debug_command(update: Update, context: CallbackContext) -> None:
-    update.message.reply_text(simulate_debug_output(), parse_mode=ParseMode.HTML)
-
-# New commands for user limits and trade history
-def setlimit_command(update: Update, context: CallbackContext) -> None:
-    user_id = update.effective_user.id
-    if len(context.args) != 1:
-        update.message.reply_text("Usage: /setlimit <daily_spend_limit_in_usd>")
-        return
-    try:
-        limit = float(context.args[0])
-        add_user(user_id, daily_spend_limit=limit)
-        update.message.reply_text(f"✅ Daily spend limit set to ${limit:.2f}")
-    except ValueError:
-        update.message.reply_text("⚠️ Invalid number for limit.")
-
-def tradehistory_command(update: Update, context: CallbackContext) -> None:
-    user_id = update.effective_user.id
-    history = get_trade_history(user_id)
-    if not history:
-        update.message.reply_text("No trade history found.")
+    if data in func_map:
+        result = func_map[data]()
+        query.edit_message_text(text=result, parse_mode='HTML')
         return
 
-    msg_lines = ["<b>📜 Your Recent Trades</b>"]
-    for ts, ttype, symbol, amt, price, total in history:
-        line = f"{ts[:19]}: {ttype} {amt} {symbol} @ ${price:.6f} (Total: ${total:.2f})"
-        msg_lines.append(line)
+    query.edit_message_text(text="❓ Unknown command. Please try again.")
 
-    update.message.reply_text("\n".join(msg_lines), parse_mode=ParseMode.HTML)
+# === Commands registration ===
 
 dispatcher.add_handler(CommandHandler("start", start))
 dispatcher.add_handler(CommandHandler("panel", panel_command))
 dispatcher.add_handler(CommandHandler("max", lambda u, c: u.message.reply_text(get_max_token_stats(), parse_mode=ParseMode.HTML)))
-dispatcher.add_handler(CommandHandler("wallets", wallets_command))
-dispatcher.add_handler(CommandHandler("watch", watch_command))
-dispatcher.add_handler(CommandHandler("addtoken", addtoken_command))
-dispatcher.add_handler(CommandHandler("tokens", tokens_command))
-dispatcher.add_handler(CommandHandler("removetoken", removetoken_command))
+dispatcher.add_handler(CommandHandler("wallets", lambda u, c: u.message.reply_text(get_wallet_summary(), parse_mode=ParseMode.HTML)))
 dispatcher.add_handler(CommandHandler("trending", lambda u, c: u.message.reply_text(get_trending_coins(), parse_mode=ParseMode.HTML)))
 dispatcher.add_handler(CommandHandler("new", lambda u, c: u.message.reply_text(get_new_tokens(), parse_mode=ParseMode.HTML)))
 dispatcher.add_handler(CommandHandler("alerts", lambda u, c: u.message.reply_text(get_suspicious_activity_alerts(), parse_mode=ParseMode.HTML)))
-dispatcher.add_handler(CommandHandler("debug", debug_command))
 dispatcher.add_handler(CommandHandler("pnl", lambda u, c: u.message.reply_text(get_pnl_report(), parse_mode=ParseMode.HTML)))
 dispatcher.add_handler(CommandHandler("sentiment", lambda u, c: u.message.reply_text(get_sentiment_scores(), parse_mode=ParseMode.HTML)))
 dispatcher.add_handler(CommandHandler("tradeprompt", lambda u, c: u.message.reply_text(get_trade_prompt(), parse_mode=ParseMode.HTML)))
 dispatcher.add_handler(CommandHandler("classify", lambda u, c: u.message.reply_text(get_narrative_classification(), parse_mode=ParseMode.HTML)))
 
-# Register new user limit and trade history handlers
-dispatcher.add_handler(CommandHandler("setlimit", setlimit_command))
-dispatcher.add_handler(CommandHandler("tradehistory", tradehistory_command))
+dispatcher.add_handler(CommandHandler("watch", lambda u, c: u.message.reply_text("Use the menu to add wallets.", parse_mode=ParseMode.HTML)))
+dispatcher.add_handler(CommandHandler("addtoken", lambda u, c: u.message.reply_text("Use the menu to add tokens.", parse_mode=ParseMode.HTML)))
+dispatcher.add_handler(CommandHandler("tokens", lambda u, c: u.message.reply_text("Use the menu to manage tokens.", parse_mode=ParseMode.HTML)))
 
 dispatcher.add_handler(CallbackQueryHandler(handle_callback))
+
+# === Scheduler setup ===
 
 scheduler = BackgroundScheduler(timezone=pytz.timezone("Asia/Bangkok"))
 
@@ -243,8 +277,6 @@ if __name__ == '__main__':
         BotCommand("tradeprompt", "AI-generated trade idea"),
         BotCommand("classify", "Meme classification of tokens"),
         BotCommand("debug", "Run simulated debug outputs"),
-        BotCommand("setlimit", "Set your daily trade spend limit"),
-        BotCommand("tradehistory", "View your recent trade history"),
         BotCommand("panel", "Show the main panel")
     ])
     app.run(host='0.0.0.0', port=PORT)
