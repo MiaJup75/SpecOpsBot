@@ -1,14 +1,5 @@
 import datetime
 import requests
-import logging
-
-logger = logging.getLogger(__name__)
-
-def safe_send_message(bot, chat_id, text, **kwargs):
-    try:
-        bot.send_message(chat_id=chat_id, text=text, **kwargs)
-    except Exception as e:
-        logger.error(f"Telegram message send failed: {e}")
 
 def get_max_token_stats() -> str:
     try:
@@ -47,8 +38,7 @@ def get_max_token_stats() -> str:
 📅 <b>Launch Date:</b> {launch_date}
 🔗 <a href='{dex_link}'>View on Dexscreener</a>
 """
-    except Exception as e:
-        logger.error(f"Error fetching MAX token stats: {e}")
+    except Exception:
         return f"⚠️ Unable to fetch MAX token data."
 
 def get_trending_coins() -> str:
