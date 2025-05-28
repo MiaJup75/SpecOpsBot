@@ -17,6 +17,7 @@ from stealth_launch import scan_new_tokens
 from mirror_watch import check_mirror_wallets
 from botnet import check_botnet_activity
 from wallet import Wallet
+from help_and_ai import tradeprompt_command  # Import your new command handler here
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -140,4 +141,71 @@ def debug_command(update: Update, context: CallbackContext) -> None:
     update.message.reply_text(simulate_debug_output(), parse_mode=ParseMode.HTML)
 
 dispatcher.add_handler(CommandHandler("start", start))
-dispatcher.add_handler(CommandHandler("
+dispatcher.add_handler(CommandHandler("panel", panel_command))
+dispatcher.add_handler(CommandHandler("max", lambda u, c: u.message.reply_text(get_max_token_stats(), parse_mode=ParseMode.HTML)))
+dispatcher.add_handler(CommandHandler("wallets", wallets_command))
+dispatcher.add_handler(CommandHandler("watch", watch_command))
+dispatcher.add_handler(CommandHandler("addtoken", addtoken_command))
+dispatcher.add_handler(CommandHandler("tokens", tokens_command))
+dispatcher.add_handler(CommandHandler("removetoken", removetoken_command))
+dispatcher.add_handler(CommandHandler("trending", lambda u, c: u.message.reply_text(get_trending_coins(), parse_mode=ParseMode.HTML)))
+dispatcher.add_handler(CommandHandler("new", lambda u, c: u.message.reply_text(get_new_tokens(), parse_mode=ParseMode.HTML)))
+dispatcher.add_handler(CommandHandler("alerts", lambda u, c: u.message.reply_text(get_suspicious_activity_alerts(), parse_mode=ParseMode.HTML)))
+dispatcher.add_handler(CommandHandler("debug", debug_command))
+dispatcher.add_handler(CommandHandler("pnl", lambda u, c: u.message.reply_text(get_pnl_report(), parse_mode=ParseMode.HTML)))
+dispatcher.add_handler(CommandHandler("sentiment", lambda u, c: u.message.reply_text(get_sentiment_scores(), parse_mode=ParseMode.HTML)))
+dispatcher.add_handler(CommandHandler("tradeprompt", tradeprompt_command))
+dispatcher.add_handler(CommandHandler("classify", lambda u, c: u.message.reply_text(get_narrative_classification(), parse_mode=ParseMode.HTML)))
+
+dispatcher.add_handler(CallbackQueryHandler(handle_callback))
+
+scheduler = BackgroundScheduler(timezone=pytz.timezone("Asia/Bangkok"))
+
+jobs = [
+    {"func": lambda: scan_new_tokens(updater.bot), "trigger": "interval", "minutes": 5},
+    {"func": lambda: check_price_targets(updater.bot), "trigger": "interval", "minutes": 10},
+    {"func": lambda: check_mirror_wallets(updater.bot), "trigger": "interval", "minutes": 10},
+    {"func": lambda: check_botnet_activity(updater.bot), "trigger": "interval", "minutes": 10},
+    {"func": lambda: send_daily_report(updater.bot), "trigger": "cron", "hour": 9, "minute": 0}
+]
+
+for job in jobs:
+    scheduler.add_job(job["func"], job["trigger"], **{k: v for k, v in job.items() if k not in ["func", "trigger"]})
+scheduler.start()
+
+def send_daily_report(bot: Bot):
+    chat_id = os.getenv("CHAT_ID")
+    report = get_full_daily_report()
+    bot.send_message(chat_id=chat_id, text=report, parse_mode=ParseMode.HTML)
+
+@app.route('/')
+def index():
+    return "SolMadSpecBot is running."
+
+@app.route(f'/{TOKEN}', methods=['POST'])
+def webhook():
+    update = Update.de_json(request.get_json(force=True), updater.bot)
+    dispatcher.process_update(update)
+    return 'ok'
+
+if __name__ == '__main__':
+    init_db()
+    updater.bot.set_my_commands([
+        BotCommand("start", "Show welcome message and buttons"),
+        BotCommand("max", "Show MAX token stats"),
+        BotCommand("wallets", "List all watched wallets"),
+        BotCommand("watch", "Add a new wallet to watch"),
+        BotCommand("addtoken", "Add a token to watch"),
+        BotCommand("removetoken", "Remove a token from watchlist"),
+        BotCommand("tokens", "List all tracked tokens"),
+        BotCommand("trending", "View top trending meme coins"),
+        BotCommand("new", "Show new token launches"),
+        BotCommand("alerts", "Show whale/dev/suspicious alerts"),
+        BotCommand("pnl", "Check your MAX token PnL"),
+        BotCommand("sentiment", "See meme sentiment scores"),
+        BotCommand("tradeprompt", "AI-generated trade idea"),
+        BotCommand("classify", "Meme classification of tokens"),
+        BotCommand("debug", "Run simulated debug outputs"),
+        BotCommand("panel", "Show the main panel")
+    ])
+    app.run(host='0.0.0.0', port=PORT)
