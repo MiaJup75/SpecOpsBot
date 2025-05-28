@@ -166,7 +166,7 @@ jobs = [
     {"func": lambda: check_price_targets(updater.bot), "trigger": "interval", "minutes": 10},
     {"func": lambda: check_mirror_wallets(updater.bot), "trigger": "interval", "minutes": 10},
     {"func": lambda: check_botnet_activity(updater.bot), "trigger": "interval", "minutes": 10},
-    {"func": lambda: check_gas_and_mev(updater.bot), "trigger": "interval", "minutes": 10},
+    {"func": lambda: check_gas_and_mev(updater.bot), "trigger": "interval", "minutes": 15},
     {"func": lambda: send_daily_report(updater.bot), "trigger": "cron", "hour": 9, "minute": 0}
 ]
 
