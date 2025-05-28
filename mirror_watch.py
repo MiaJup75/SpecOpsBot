@@ -14,7 +14,7 @@ def fetch_wallet_activity(address):
         return resp.json()
     except Exception as e:
         logger.error(f"[MirrorWatch] Error fetching wallet {address}: {e}")
-        return {}
+        return []
 
 def check_mirror_wallets(bot: Bot):
     wallets = get_wallets()
@@ -23,8 +23,9 @@ def check_mirror_wallets(bot: Bot):
     for label, address in wallets:
         try:
             activity = fetch_wallet_activity(address)
-            # TODO: Add logic to detect new buys/sells, changes, etc.
-            msg = f"🔍 Wallet '{label}' ({address[:6]}...{address[-6:]}) checked – activity found."
+            # Here implement real logic: detect buys, sells, token changes, etc.
+            # Example placeholder message:
+            msg = f"🔍 Checked wallet '{label}' ({address[:6]}...{address[-6:]}) - Recent activity found."
             bot.send_message(chat_id=chat_id, text=msg)
         except Exception as e:
             logger.error(f"[MirrorWatch] Failed to process wallet {address}: {e}")
