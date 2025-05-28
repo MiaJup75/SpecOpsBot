@@ -9,7 +9,7 @@ logger = logging.getLogger(__name__)
 # To track tokens already alerted in the last X period
 _alerted_tokens = {}
 
-# Configurable alert cooldown (e.g. 30 minutes)
+# Configurable alert cooldown (e.g., 30 minutes)
 ALERT_COOLDOWN_SECONDS = 1800
 
 def fetch_new_tokens():
