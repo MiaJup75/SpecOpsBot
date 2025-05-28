@@ -4,12 +4,34 @@ from telegram import Update
 from telegram.ext import CallbackContext
 import random
 
+HELP_TEXT = """
+<b>🤖 SolMadSpecBot Help & Commands</b>
+
+/start - Welcome message & main menu  
+/max - Show detailed MAX token stats  
+/wallets - List all watched wallets  
+/watch &lt;address&gt; [name] - Add wallet to watchlist  
+/addtoken $TOKEN - Add token to watchlist  
+/removetoken $TOKEN - Remove token from watchlist  
+/tokens - Show list of tracked tokens  
+/trending - Top trending Solana meme coins  
+/new - New token launches (&lt;24h)  
+/alerts - Whale, dev, and suspicious activity alerts  
+/pnl - Your MAX token profit & loss stats  
+/sentiment - Meme sentiment scores for tokens  
+/tradeprompt - AI-generated trade suggestions  
+/classify - Meme narrative classification for tokens  
+/debug - Simulated debug output for testing  
+/panel - Show main interactive panel
+
+Use inline buttons or commands to navigate!
+"""
+
 def get_ai_trade_prompt() -> str:
     """
     Generate an AI-powered trade prompt using simple heuristic or data.
     This is a placeholder and can be enhanced with real AI or data sources.
     """
-    # Example trade ideas based on some fake sentiment and wallet activity
     trade_ideas = [
         {
             "token": "$DUBI",
@@ -54,7 +76,6 @@ Risk Level: {idea['risk']}
 """
     return prompt
 
-
 def tradeprompt_command(update: Update, context: CallbackContext) -> None:
     """
     Telegram command handler for /tradeprompt.
@@ -62,3 +83,10 @@ def tradeprompt_command(update: Update, context: CallbackContext) -> None:
     """
     prompt = get_ai_trade_prompt()
     update.message.reply_text(prompt, parse_mode="HTML")
+
+def help_command(update: Update, context: CallbackContext) -> None:
+    """
+    Telegram command handler for /help.
+    Sends the help text listing available commands.
+    """
+    update.message.reply_text(HELP_TEXT, parse_mode="HTML")
