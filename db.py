@@ -1,11 +1,11 @@
 import sqlite3
+from datetime import datetime
 
 DB_NAME = "solmad.db"
 
 def init_db():
     conn = sqlite3.connect(DB_NAME)
     c = conn.cursor()
-
     # Wallet watchlist with labels
     c.execute('''
         CREATE TABLE IF NOT EXISTS wallets (
@@ -13,36 +13,33 @@ def init_db():
             address TEXT PRIMARY KEY
         )
     ''')
-
     # Token tracking list
     c.execute('''
         CREATE TABLE IF NOT EXISTS tokens (
             symbol TEXT PRIMARY KEY
         )
     ''')
-
-    # User management table with customizable trade limits
+    # User limits table for customizable limits per user
     c.execute('''
         CREATE TABLE IF NOT EXISTS users (
             user_id INTEGER PRIMARY KEY,
-            max_daily_spend REAL DEFAULT 1000.0,
-            max_single_trade REAL DEFAULT 100.0
+            daily_max_spend REAL DEFAULT 1000.0,
+            single_trade_max REAL DEFAULT 200.0
         )
     ''')
-
     # Trade history table
     c.execute('''
-        CREATE TABLE IF NOT EXISTS trade_history (
+        CREATE TABLE IF NOT EXISTS trades (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id INTEGER,
-            trade_type TEXT,
             token_symbol TEXT,
             amount REAL,
             price REAL,
-            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+            trade_type TEXT,
+            timestamp TEXT,
+            FOREIGN KEY(user_id) REFERENCES users(user_id)
         )
     ''')
-
     conn.commit()
     conn.close()
 
@@ -83,49 +80,58 @@ def remove_token(symbol):
     conn.commit()
     conn.close()
 
-def set_user_limits(user_id: int, max_daily: float, max_single: float):
+# User management functions
+def add_or_update_user(user_id, daily_max_spend=1000.0, single_trade_max=200.0):
     conn = sqlite3.connect(DB_NAME)
     c = conn.cursor()
-    c.execute('''
-        INSERT INTO users (user_id, max_daily_spend, max_single_trade)
+    c.execute("""
+        INSERT INTO users (user_id, daily_max_spend, single_trade_max)
         VALUES (?, ?, ?)
         ON CONFLICT(user_id) DO UPDATE SET
-            max_daily_spend=excluded.max_daily_spend,
-            max_single_trade=excluded.max_single_trade
-    ''', (user_id, max_daily, max_single))
+            daily_max_spend=excluded.daily_max_spend,
+            single_trade_max=excluded.single_trade_max
+    """, (user_id, daily_max_spend, single_trade_max))
     conn.commit()
     conn.close()
 
-def get_user_limits(user_id: int):
+def get_user_limits(user_id):
     conn = sqlite3.connect(DB_NAME)
     c = conn.cursor()
-    c.execute('SELECT max_daily_spend, max_single_trade FROM users WHERE user_id=?', (user_id,))
+    c.execute("SELECT daily_max_spend, single_trade_max FROM users WHERE user_id = ?", (user_id,))
     row = c.fetchone()
     conn.close()
     if row:
-        return row  # (max_daily_spend, max_single_trade)
-    return (1000.0, 100.0)  # Default limits if none set
+        return row[0], row[1]
+    else:
+        # Defaults if user not found
+        return 1000.0, 200.0
 
-def log_trade(user_id: int, trade_type: str, token_symbol: str, amount: float, price: float):
+# Trade logging
+def log_trade(user_id, token_symbol, amount, price, trade_type, timestamp=None):
+    if timestamp is None:
+        timestamp = datetime.utcnow().isoformat()
+    elif isinstance(timestamp, datetime):
+        timestamp = timestamp.isoformat()
+
     conn = sqlite3.connect(DB_NAME)
     c = conn.cursor()
-    c.execute('''
-        INSERT INTO trade_history (user_id, trade_type, token_symbol, amount, price)
-        VALUES (?, ?, ?, ?, ?)
-    ''', (user_id, trade_type, token_symbol, amount, price))
+    c.execute("""
+        INSERT INTO trades (user_id, token_symbol, amount, price, trade_type, timestamp)
+        VALUES (?, ?, ?, ?, ?, ?)
+    """, (user_id, token_symbol.upper(), amount, price, trade_type, timestamp))
     conn.commit()
     conn.close()
 
-def get_trade_history(user_id: int, limit: int = 10):
+def get_trade_history(user_id, limit=20):
     conn = sqlite3.connect(DB_NAME)
     c = conn.cursor()
-    c.execute('''
-        SELECT trade_type, token_symbol, amount, price, timestamp
-        FROM trade_history
-        WHERE user_id=?
+    c.execute("""
+        SELECT token_symbol, amount, price, trade_type, timestamp
+        FROM trades
+        WHERE user_id = ?
         ORDER BY timestamp DESC
         LIMIT ?
-    ''', (user_id, limit))
+    """, (user_id, limit))
     rows = c.fetchall()
     conn.close()
     return rows
