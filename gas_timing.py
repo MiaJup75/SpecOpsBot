@@ -3,11 +3,21 @@ import requests
 from telegram import Bot
 
 def fetch_gas_price():
-    # Example: fetch Solana gas price or network congestion from an API or RPC
-    # Placeholder returns a mock gas price in lamports
     try:
-        # Replace with real API endpoint or RPC call
-        return 5000  # Mock lamports/gas price
+        url = os.getenv("SOLANA_RPC_URL", "https://api.mainnet-beta.solana.com")
+        headers = {"Content-Type": "application/json"}
+        payload = {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "getRecentBlockhash",
+            "params": []
+        }
+        response = requests.post(url, json=payload, headers=headers, timeout=5)
+        response.raise_for_status()
+        result = response.json().get("result", {})
+        fee_calculator = result.get("value", {}).get("feeCalculator", {})
+        lamports_per_signature = fee_calculator.get("lamportsPerSignature")
+        return lamports_per_signature
     except Exception as e:
         print(f"[GasTiming] Error fetching gas price: {e}")
         return None
