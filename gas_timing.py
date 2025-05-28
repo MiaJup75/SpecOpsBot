@@ -1,35 +1,40 @@
 import os
-import requests
 import logging
+from solana.rpc.api import Client
 from telegram import Bot
 
 logger = logging.getLogger(__name__)
 
+_last_mev_check = 0
+MEV_CHECK_INTERVAL = 300  # 5 minutes
+
 def fetch_gas_price():
-    """
-    Fetch current Solana gas price or network congestion from an API or RPC.
-    Placeholder returns a mock gas price in lamports.
-    """
     try:
-        # Replace with a real API or RPC call for Solana gas price
-        # Example API (replace with actual if found): "https://api.solana.com/gasPrice"
-        # resp = requests.get("https://api.example.com/solana/gas", timeout=5)
-        # gas_price = resp.json().get("gasPriceLamports", 0)
-        
-        gas_price = 5000  # Mock lamports per transaction unit
-        return gas_price
+        client = Client(os.getenv("SOLANA_RPC_URL", "https://api.mainnet-beta.solana.com"))
+        resp = client.get_recent_blockhash()
+        fee_calculator = resp['result']['value']['feeCalculator']
+        lamports_per_signature = fee_calculator.get('lamportsPerSignature', 0)
+        return lamports_per_signature
     except Exception as e:
-        logger.error(f"[GasTiming] Error fetching gas price: {e}")
+        logger.error(f"[GasTiming] Error fetching gas price from RPC: {e}")
         return None
 
 def check_mev_conditions():
-    """
-    Placeholder for MEV front-run or congestion detection logic.
-    Return True if conditions suggest MEV risk, False otherwise.
-    """
-    # You can integrate third-party MEV detection APIs or add custom heuristics here.
-    # For example, detecting sudden spikes in pending txs, suspicious transaction patterns, etc.
-    return False
+    global _last_mev_check
+    import time
+    now = time.time()
+
+    if now - _last_mev_check < MEV_CHECK_INTERVAL:
+        return False  # Cache last result for efficiency
+
+    _last_mev_check = now
+    try:
+        # TODO: Implement real MEV risk logic or API integration here
+        # Placeholder returns False for no risk
+        return False
+    except Exception as e:
+        logger.error(f"[GasTiming] Error checking MEV conditions: {e}")
+        return False
 
 def check_gas_and_mev(bot: Bot):
     chat_id = os.getenv("CHAT_ID")
@@ -47,7 +52,4 @@ def check_gas_and_mev(bot: Bot):
         msg_lines.append("✅ MEV risk minimal.")
 
     message = "\n".join(msg_lines)
-    try:
-        bot.send_message(chat_id=chat_id, text=message, parse_mode="HTML")
-    except Exception as e:
-        logger.error(f"[GasTiming] Failed to send message: {e}")
+    bot.send_message(chat_id=chat_id, text=message, parse_mode="HTML")
