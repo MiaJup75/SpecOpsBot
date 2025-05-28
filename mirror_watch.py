@@ -1,7 +1,7 @@
-import requests
 import os
+import requests
 import logging
-from db import get_wallets, get_wallet_last_tx, update_wallet_last_tx
+from db import get_wallets
 from telegram import Bot
 
 logger = logging.getLogger(__name__)
@@ -23,21 +23,8 @@ def check_mirror_wallets(bot: Bot):
     for label, address in wallets:
         try:
             activity = fetch_wallet_activity(address)
-            if not activity:
-                continue
-
-            # Extract the latest transaction signature or timestamp (depends on API response)
-            latest_tx = None
-            # Assuming response has a list of recent transactions under 'transactions'
-            txns = activity.get("transactions", [])
-            if txns:
-                latest_tx = txns[0].get("signature")
-
-            last_tx = get_wallet_last_tx(address)
-            if latest_tx and latest_tx != last_tx:
-                msg = f"🔔 New activity on wallet '{label}' ({address[:6]}...{address[-6:]})."
-                bot.send_message(chat_id=chat_id, text=msg)
-                update_wallet_last_tx(address, latest_tx)
-
+            # TODO: Add logic to detect new buys/sells, changes, etc.
+            msg = f"🔍 Wallet '{label}' ({address[:6]}...{address[-6:]}) checked – activity found."
+            bot.send_message(chat_id=chat_id, text=msg)
         except Exception as e:
             logger.error(f"[MirrorWatch] Failed to process wallet {address}: {e}")
