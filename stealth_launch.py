@@ -1,36 +1,32 @@
 import requests
+import os
 import logging
 from telegram import Bot
 from time import time
-import os
 
 logger = logging.getLogger(__name__)
 
+# Track alerted tokens with timestamps to avoid spam
 _alerted_tokens = {}
-ALERT_COOLDOWN_SECONDS = 1800
+ALERT_COOLDOWN_SECONDS = 1800  # 30 minutes cooldown between alerts for same token
 
 def fetch_new_tokens():
+    """Fetch recent token launches from Dexscreener or similar API."""
     url = "https://api.dexscreener.com/latest/dex/tokens?chain=solana"
     try:
         resp = requests.get(url, timeout=10)
         resp.raise_for_status()
         tokens = resp.json().get("tokens", [])
         return tokens
-    except requests.HTTPError as e:
-        if e.response.status_code == 404:
-            logger.warning("Dexscreener API endpoint not found (404). Skipping stealth launch scan.")
-            return []
-        else:
-            logger.error(f"[StealthLaunch] HTTP error: {e}")
-            return []
     except Exception as e:
         logger.error(f"[StealthLaunch] Failed fetching tokens: {e}")
         return []
 
 def check_token_risk(token):
+    """Apply heuristics to flag risky tokens."""
     lp = token.get("liquidity", 0)
     locked = token.get("locked", False)
-    social_score = token.get("socialScore", 0)
+    social_score = token.get("socialScore", 0)  # Placeholder
 
     risk_flags = []
     if lp < 5000:
@@ -45,7 +41,7 @@ def check_token_risk(token):
 def should_alert(token_symbol):
     now = time()
     last_alert = _alerted_tokens.get(token_symbol)
-    if last_alert and now - last_alert < ALERT_COOLDOWN_SECONDS:
+    if last_alert and (now - last_alert) < ALERT_COOLDOWN_SECONDS:
         return False
     _alerted_tokens[token_symbol] = now
     return True
@@ -75,7 +71,4 @@ def scan_new_tokens(bot: Bot):
                 f"Risk Flags: {flags_text}\n"
                 f"More info: {url}"
             )
-            try:
-                bot.send_message(chat_id=chat_id, text=msg, parse_mode="HTML")
-            except Exception as e:
-                logger.error(f"[StealthLaunch] Failed to send alert for {symbol}: {e}")
+            bot.send_message(chat_id=chat_id, text=msg, parse_mode="HTML")
