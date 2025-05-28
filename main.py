@@ -1,15 +1,10 @@
 import logging
 import os
-from telegram import (
-    Update, InlineKeyboardButton, InlineKeyboardMarkup, ParseMode, BotCommand, Bot
-)
-from telegram.ext import (
-    Updater, CommandHandler, CallbackContext, CallbackQueryHandler, Dispatcher
-)
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ParseMode, BotCommand, Bot
+from telegram.ext import Updater, CommandHandler, CallbackContext, CallbackQueryHandler, Dispatcher
 from flask import Flask, request
 from apscheduler.schedulers.background import BackgroundScheduler
 import pytz
-import requests
 
 from utils import (
     get_max_token_stats, get_trending_coins, get_new_tokens, get_suspicious_activity_alerts,
@@ -21,8 +16,8 @@ from price_alerts import check_price_targets
 from stealth_launch import scan_new_tokens
 from mirror_watch import check_mirror_wallets
 from botnet import check_botnet_activity
+from tokens import handle_add_token, handle_tokens, handle_remove_token
 from wallet import Wallet
-from tokens import fetch_token_info  # Import the new function for detailed token info
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -47,7 +42,7 @@ def get_main_keyboard():
         [InlineKeyboardButton("🔠 Meme Classification", callback_data='classify')],
         [InlineKeyboardButton("➕ Add Wallet", switch_inline_query_current_chat='/watch '),
          InlineKeyboardButton("➕ Add Token", switch_inline_query_current_chat='/addtoken $')],
-        [InlineKeyboardButton("📋 View Tokens", switch_inline_query_current_chat='/tokens')]
+        [InlineKeyboardButton("📋 View Tokens", callback_data='viewtokens')]
     ])
 
 def start(update: Update, context: CallbackContext) -> None:
@@ -77,7 +72,6 @@ def handle_callback(update: Update, context: CallbackContext) -> None:
     query.answer()
     command = query.data
 
-    # Command to function mapping including tokens info
     func_map = {
         'max': get_max_token_stats,
         'wallets': get_wallet_summary,
@@ -87,33 +81,12 @@ def handle_callback(update: Update, context: CallbackContext) -> None:
         'pnl': get_pnl_report,
         'sentiment': get_sentiment_scores,
         'tradeprompt': get_trade_prompt,
-        'classify': get_narrative_classification
+        'classify': get_narrative_classification,
+        'viewtokens': lambda: "\n".join([f"• ${t}" for t in get_tokens()]) or "No tokens tracked."
     }
 
-    # Check if the command matches a known function first
-    if command in func_map:
-        result = func_map[command]()
-        context.bot.send_message(chat_id=query.message.chat.id, text=result, parse_mode=ParseMode.HTML)
-        return
-    
-    # If the callback data looks like a token symbol (starts with $ or just uppercase letters)
-    token_symbol = command.lstrip("$").upper()
-    token_info = fetch_token_info(token_symbol)
-    if token_info:
-        price = token_info.get("price")
-        mcap = token_info.get("market_cap")
-        liquidity = token_info.get("liquidity")
-        pair = token_info.get("pair")
-        dex_link = f"https://dexscreener.com/solana/{pair}" if pair else "N/A"
-
-        msg = (f"<b>Token Info: ${token_symbol}</b>\n"
-               f"Price: ${float(price):.6f}\n"
-               f"Market Cap: ${int(mcap):,}\n"
-               f"Liquidity: ${int(liquidity):,}\n"
-               f"<a href='{dex_link}'>View on Dexscreener</a>")
-        context.bot.send_message(chat_id=query.message.chat.id, text=msg, parse_mode=ParseMode.HTML, disable_web_page_preview=False)
-    else:
-        context.bot.send_message(chat_id=query.message.chat.id, text="❌ Token info not available.", parse_mode=ParseMode.HTML)
+    result = func_map.get(command, lambda: "Unknown command")()
+    context.bot.send_message(chat_id=query.message.chat.id, text=result, parse_mode=ParseMode.HTML)
 
 def watch_command(update: Update, context: CallbackContext) -> None:
     if len(context.args) < 1:
@@ -135,55 +108,18 @@ def wallets_command(update: Update, context: CallbackContext) -> None:
     msg = "<b>👛 Watched Wallets</b>\n" + "\n".join([f"• {label}\n<code>{addr}</code>" for label, addr in wallets])
     update.message.reply_text(msg, parse_mode=ParseMode.HTML)
 
-def addtoken_command(update: Update, context: CallbackContext) -> None:
-    if len(context.args) != 1:
-        update.message.reply_text("Usage: /addtoken $TOKEN")
-        return
-    symbol = context.args[0].lstrip("$")
-    try:
-        add_token(symbol)
-        update.message.reply_text(f"✅ Watching token: ${symbol.upper()}")
-    except Exception:
-        update.message.reply_text("⚠️ Error adding token.")
-
-def tokens_command(update: Update, context: CallbackContext) -> None:
-    tokens = get_tokens()
-    if not tokens:
-        update.message.reply_text("No tokens are currently being tracked.")
-        return
-    # Add inline buttons for each token to allow clicking
-    keyboard = []
-    for token in tokens:
-        keyboard.append([InlineKeyboardButton(f"${token}", callback_data=token)])
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    update.message.reply_text("<b>📋 Tracked Tokens</b>", reply_markup=reply_markup, parse_mode=ParseMode.HTML)
-
-def removetoken_command(update: Update, context: CallbackContext) -> None:
-    if len(context.args) != 1:
-        update.message.reply_text("Usage: /removetoken $TOKEN")
-        return
-    symbol = context.args[0].lstrip("$")
-    try:
-        remove_token(symbol)
-        update.message.reply_text(f"✅ Removed token: ${symbol.upper()}")
-    except Exception:
-        update.message.reply_text("⚠️ Error removing token.")
-
-def debug_command(update: Update, context: CallbackContext) -> None:
-    update.message.reply_text(simulate_debug_output(), parse_mode=ParseMode.HTML)
-
 dispatcher.add_handler(CommandHandler("start", start))
 dispatcher.add_handler(CommandHandler("panel", panel_command))
 dispatcher.add_handler(CommandHandler("max", lambda u, c: u.message.reply_text(get_max_token_stats(), parse_mode=ParseMode.HTML)))
 dispatcher.add_handler(CommandHandler("wallets", wallets_command))
 dispatcher.add_handler(CommandHandler("watch", watch_command))
-dispatcher.add_handler(CommandHandler("addtoken", addtoken_command))
-dispatcher.add_handler(CommandHandler("tokens", tokens_command))
-dispatcher.add_handler(CommandHandler("removetoken", removetoken_command))
+dispatcher.add_handler(CommandHandler("addtoken", handle_add_token))
+dispatcher.add_handler(CommandHandler("tokens", handle_tokens))
+dispatcher.add_handler(CommandHandler("removetoken", handle_remove_token))
 dispatcher.add_handler(CommandHandler("trending", lambda u, c: u.message.reply_text(get_trending_coins(), parse_mode=ParseMode.HTML)))
 dispatcher.add_handler(CommandHandler("new", lambda u, c: u.message.reply_text(get_new_tokens(), parse_mode=ParseMode.HTML)))
 dispatcher.add_handler(CommandHandler("alerts", lambda u, c: u.message.reply_text(get_suspicious_activity_alerts(), parse_mode=ParseMode.HTML)))
-dispatcher.add_handler(CommandHandler("debug", debug_command))
+dispatcher.add_handler(CommandHandler("debug", lambda u, c: u.message.reply_text(simulate_debug_output(), parse_mode=ParseMode.HTML)))
 dispatcher.add_handler(CommandHandler("pnl", lambda u, c: u.message.reply_text(get_pnl_report(), parse_mode=ParseMode.HTML)))
 dispatcher.add_handler(CommandHandler("sentiment", lambda u, c: u.message.reply_text(get_sentiment_scores(), parse_mode=ParseMode.HTML)))
 dispatcher.add_handler(CommandHandler("tradeprompt", lambda u, c: u.message.reply_text(get_trade_prompt(), parse_mode=ParseMode.HTML)))
