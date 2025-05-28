@@ -1,5 +1,5 @@
-import requests
 import os
+import requests
 import logging
 from db import get_wallets
 from telegram import Bot
@@ -23,10 +23,7 @@ def check_mirror_wallets(bot: Bot):
     for label, address in wallets:
         try:
             activity = fetch_wallet_activity(address)
-            # Real logic placeholder:
-            # Implement logic to detect buys/sells, significant changes, etc.
-            # Example: if recent buys > threshold, send alert
-            # For now just a notification of check:
+            # TODO: Implement real buy/sell detection and notify logic
             msg = f"🔍 Checked wallet '{label}' ({address[:6]}...{address[-6:]}) - Recent activity found."
             bot.send_message(chat_id=chat_id, text=msg)
         except Exception as e:
