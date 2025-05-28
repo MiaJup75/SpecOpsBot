@@ -1,22 +1,34 @@
 import os
 import requests
-from telegram import Bot
 import logging
+from telegram import Bot
 
 logger = logging.getLogger(__name__)
 
 def fetch_gas_price():
+    """
+    Fetch current Solana gas price or network congestion from an API or RPC.
+    Placeholder returns a mock gas price in lamports.
+    """
     try:
-        # Replace with actual RPC or API call to get current Solana gas price
-        # Example dummy value:
-        return 5000  # lamports
+        # Replace with a real API or RPC call for Solana gas price
+        # Example API (replace with actual if found): "https://api.solana.com/gasPrice"
+        # resp = requests.get("https://api.example.com/solana/gas", timeout=5)
+        # gas_price = resp.json().get("gasPriceLamports", 0)
+        
+        gas_price = 5000  # Mock lamports per transaction unit
+        return gas_price
     except Exception as e:
         logger.error(f"[GasTiming] Error fetching gas price: {e}")
         return None
 
 def check_mev_conditions():
-    # Implement MEV risk detection logic here
-    # Return True if MEV risk is detected, False otherwise
+    """
+    Placeholder for MEV front-run or congestion detection logic.
+    Return True if conditions suggest MEV risk, False otherwise.
+    """
+    # You can integrate third-party MEV detection APIs or add custom heuristics here.
+    # For example, detecting sudden spikes in pending txs, suspicious transaction patterns, etc.
     return False
 
 def check_gas_and_mev(bot: Bot):
@@ -35,4 +47,7 @@ def check_gas_and_mev(bot: Bot):
         msg_lines.append("✅ MEV risk minimal.")
 
     message = "\n".join(msg_lines)
-    bot.send_message(chat_id=chat_id, text=message, parse_mode="HTML")
+    try:
+        bot.send_message(chat_id=chat_id, text=message, parse_mode="HTML")
+    except Exception as e:
+        logger.error(f"[GasTiming] Failed to send message: {e}")
