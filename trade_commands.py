@@ -1,7 +1,6 @@
 from telegram import Update
 from telegram.ext import CallbackContext
-from db import get_user_limits, set_user_limits, get_trade_history, log_trade
-from trade_executor import execute_sell
+from db import get_user_limits, set_user_limits, get_trade_history
 
 def view_limits_command(update: Update, context: CallbackContext) -> None:
     user_id = str(update.effective_user.id)
@@ -10,12 +9,12 @@ def view_limits_command(update: Update, context: CallbackContext) -> None:
     stop_loss = limits.get("stop_loss_pct", "Not set")
 
     msg = (
-        f"📊 Your Trade Limits:\n"
+        f"📊 <b>Your Trade Limits</b>:\n"
         f"• Daily Sell Limit: {daily_limit}\n"
-        f"• Stop Loss %: {stop_loss}\n"
-        f"\nUse /setlimit <daily_sell_limit> <stop_loss_pct> to update."
+        f"• Stop Loss %: {stop_loss}\n\n"
+        "Use /setlimit <daily_sell_limit> <stop_loss_pct> to update your limits."
     )
-    update.message.reply_text(msg)
+    update.message.reply_text(msg, parse_mode="HTML")
 
 def set_limits_command(update: Update, context: CallbackContext) -> None:
     user_id = str(update.effective_user.id)
@@ -29,48 +28,29 @@ def set_limits_command(update: Update, context: CallbackContext) -> None:
         daily_limit = float(args[0])
         stop_loss_pct = float(args[1])
     except ValueError:
-        update.message.reply_text("Both limits must be numbers.")
+        update.message.reply_text("Both limits must be valid numbers.")
         return
 
     set_user_limits(user_id, daily_limit, stop_loss_pct)
-    update.message.reply_text(f"✅ Limits updated: Daily Sell Limit = {daily_limit}, Stop Loss = {stop_loss_pct}%")
+    update.message.reply_text(
+        f"✅ Limits updated:\nDaily Sell Limit = {daily_limit}\nStop Loss = {stop_loss_pct}%",
+        parse_mode="HTML"
+    )
 
 def trade_history_command(update: Update, context: CallbackContext) -> None:
     user_id = str(update.effective_user.id)
-    token_symbol = context.args[0].upper() if context.args else None
-
-    if not token_symbol:
+    if not context.args:
         update.message.reply_text("Usage: /tradehistory <TOKEN_SYMBOL>")
         return
+    token_symbol = context.args[0].upper()
 
     trades = get_trade_history(user_id, token_symbol)
     if not trades:
         update.message.reply_text(f"No trade history found for {token_symbol}.")
         return
 
-    msg = f"📜 Trade History for {token_symbol}:\n"
+    msg = f"📜 <b>Trade History for {token_symbol}</b>:\n"
     for t in trades:
         timestamp = t['timestamp'].strftime("%Y-%m-%d %H:%M")
         msg += f"• {t['side'].capitalize()} {t['amount']} @ {t.get('price', 'N/A')} on {timestamp}\n"
-    update.message.reply_text(msg)
-
-def sell_command(update: Update, context: CallbackContext) -> None:
-    user_id = str(update.effective_user.id)
-    args = context.args
-
-    if len(args) < 2:
-        update.message.reply_text("Usage: /sell <TOKEN_SYMBOL> <AMOUNT>")
-        return
-
-    token_symbol = args[0].upper()
-    try:
-        amount = float(args[1])
-    except ValueError:
-        update.message.reply_text("Amount must be a number.")
-        return
-
-    success, message = execute_sell(user_id, token_symbol, amount)
-    if success:
-        update.message.reply_text(f"✅ Sell order executed: {amount} {token_symbol}\n{message}")
-    else:
-        update.message.reply_text(f"⚠️ Sell failed: {message}")
+    update.message.reply_text(msg, parse_mode="HTML")
