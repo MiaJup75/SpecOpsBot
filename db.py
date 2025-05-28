@@ -1,37 +1,25 @@
 import sqlite3
-import json
-from datetime import datetime
 
 DB_NAME = "solmad.db"
 
 def init_db():
     conn = sqlite3.connect(DB_NAME)
     c = conn.cursor()
-    # Wallet watchlist with labels
+    # Wallet watchlist with labels and last transaction tracking
     c.execute('''
         CREATE TABLE IF NOT EXISTS wallets (
             label TEXT,
-            address TEXT PRIMARY KEY
+            address TEXT PRIMARY KEY,
+            last_tx TEXT
         )
     ''')
-
     # Token tracking list
     c.execute('''
         CREATE TABLE IF NOT EXISTS tokens (
             symbol TEXT PRIMARY KEY
         )
     ''')
-
-    # Wallet activity cache for mirror wallet detection
-    c.execute('''
-        CREATE TABLE IF NOT EXISTS wallet_activity_cache (
-            address TEXT PRIMARY KEY,
-            activity_json TEXT,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    ''')
-
-    # User limits for trade execution
+    # User trade limits and history
     c.execute('''
         CREATE TABLE IF NOT EXISTS users (
             user_id TEXT PRIMARY KEY,
@@ -39,8 +27,6 @@ def init_db():
             stop_loss_pct REAL DEFAULT 0
         )
     ''')
-
-    # Trade history log
     c.execute('''
         CREATE TABLE IF NOT EXISTS trades (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -49,17 +35,16 @@ def init_db():
             side TEXT,
             amount REAL,
             price REAL,
-            timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     ''')
-
     conn.commit()
     conn.close()
 
 def add_wallet(label, address):
     conn = sqlite3.connect(DB_NAME)
     c = conn.cursor()
-    c.execute("INSERT OR REPLACE INTO wallets (label, address) VALUES (?, ?)", (label, address))
+    c.execute("INSERT OR IGNORE INTO wallets (label, address) VALUES (?, ?)", (label, address))
     conn.commit()
     conn.close()
 
@@ -70,6 +55,21 @@ def get_wallets():
     results = c.fetchall()
     conn.close()
     return results
+
+def get_wallet_last_tx(address: str) -> str | None:
+    conn = sqlite3.connect(DB_NAME)
+    c = conn.cursor()
+    c.execute("SELECT last_tx FROM wallets WHERE address = ?", (address,))
+    row = c.fetchone()
+    conn.close()
+    return row[0] if row else None
+
+def update_wallet_last_tx(address: str, last_tx: str):
+    conn = sqlite3.connect(DB_NAME)
+    c = conn.cursor()
+    c.execute("UPDATE wallets SET last_tx = ? WHERE address = ?", (last_tx, address))
+    conn.commit()
+    conn.close()
 
 def add_token(symbol):
     conn = sqlite3.connect(DB_NAME)
@@ -93,36 +93,8 @@ def remove_token(symbol):
     conn.commit()
     conn.close()
 
-def get_wallet_activity_cache(address: str):
-    conn = sqlite3.connect(DB_NAME)
-    c = conn.cursor()
-    c.execute("SELECT activity_json FROM wallet_activity_cache WHERE address = ?", (address,))
-    row = c.fetchone()
-    conn.close()
-    if row and row[0]:
-        try:
-            return json.loads(row[0])
-        except Exception:
-            return None
-    return None
-
-def update_wallet_activity_cache(address: str, activity: dict):
-    conn = sqlite3.connect(DB_NAME)
-    c = conn.cursor()
-    activity_json = json.dumps(activity)
-    now = datetime.utcnow()
-    c.execute('''
-        INSERT INTO wallet_activity_cache(address, activity_json, updated_at)
-        VALUES (?, ?, ?)
-        ON CONFLICT(address) DO UPDATE SET
-            activity_json=excluded.activity_json,
-            updated_at=excluded.updated_at
-    ''', (address, activity_json, now))
-    conn.commit()
-    conn.close()
-
-# User limits functions
-def get_user_limits(user_id: str):
+# User limits & trade history (example methods - you can expand as needed)
+def get_user_limits(user_id):
     conn = sqlite3.connect(DB_NAME)
     c = conn.cursor()
     c.execute("SELECT daily_sell_limit, stop_loss_pct FROM users WHERE user_id = ?", (user_id,))
@@ -133,40 +105,34 @@ def get_user_limits(user_id: str):
     else:
         return {"daily_sell_limit": None, "stop_loss_pct": None}
 
-def set_user_limits(user_id: str, daily_sell_limit: float, stop_loss_pct: float):
+def set_user_limits(user_id, daily_sell_limit, stop_loss_pct):
     conn = sqlite3.connect(DB_NAME)
     c = conn.cursor()
-    c.execute('''
-        INSERT INTO users(user_id, daily_sell_limit, stop_loss_pct)
-        VALUES (?, ?, ?)
-        ON CONFLICT(user_id) DO UPDATE SET
-            daily_sell_limit=excluded.daily_sell_limit,
-            stop_loss_pct=excluded.stop_loss_pct
-    ''', (user_id, daily_sell_limit, stop_loss_pct))
+    c.execute(
+        "INSERT INTO users (user_id, daily_sell_limit, stop_loss_pct) VALUES (?, ?, ?) "
+        "ON CONFLICT(user_id) DO UPDATE SET daily_sell_limit = excluded.daily_sell_limit, stop_loss_pct = excluded.stop_loss_pct",
+        (user_id, daily_sell_limit, stop_loss_pct),
+    )
     conn.commit()
     conn.close()
 
-# Trade history functions
-def log_trade(user_id: str, token_symbol: str, side: str, amount: float, price: float):
+def log_trade(user_id, token_symbol, side, amount, price):
     conn = sqlite3.connect(DB_NAME)
     c = conn.cursor()
-    now = datetime.utcnow()
-    c.execute('''
-        INSERT INTO trades(user_id, token_symbol, side, amount, price, timestamp)
-        VALUES (?, ?, ?, ?, ?, ?)
-    ''', (user_id, token_symbol.upper(), side, amount, price, now))
+    c.execute(
+        "INSERT INTO trades (user_id, token_symbol, side, amount, price) VALUES (?, ?, ?, ?, ?)",
+        (user_id, token_symbol, side, amount, price),
+    )
     conn.commit()
     conn.close()
 
-def get_trade_history(user_id: str, token_symbol: str):
+def get_trade_history(user_id, token_symbol):
     conn = sqlite3.connect(DB_NAME)
     c = conn.cursor()
-    c.execute('''
-        SELECT side, amount, price, timestamp
-        FROM trades
-        WHERE user_id = ? AND token_symbol = ?
-        ORDER BY timestamp DESC
-    ''', (user_id, token_symbol.upper()))
+    c.execute(
+        "SELECT side, amount, price, timestamp FROM trades WHERE user_id = ? AND token_symbol = ? ORDER BY timestamp DESC",
+        (user_id, token_symbol),
+    )
     rows = c.fetchall()
     conn.close()
     trades = []
@@ -175,6 +141,6 @@ def get_trade_history(user_id: str, token_symbol: str):
             "side": row[0],
             "amount": row[1],
             "price": row[2],
-            "timestamp": datetime.strptime(row[3], "%Y-%m-%d %H:%M:%S")
+            "timestamp": row[3],
         })
     return trades
