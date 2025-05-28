@@ -17,9 +17,7 @@ from stealth_launch import scan_new_tokens
 from mirror_watch import check_mirror_wallets
 from botnet import check_botnet_activity
 from wallet import Wallet
-from trade_commands import (
-    view_limits_command, set_limits_command, trade_history_command, sell_command
-)
+from trade_commands import view_limits_command, set_limits_command, trade_history_command
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -44,7 +42,10 @@ def get_main_keyboard():
         [InlineKeyboardButton("🔠 Meme Classification", callback_data='classify')],
         [InlineKeyboardButton("➕ Add Wallet", switch_inline_query_current_chat='/watch '),
          InlineKeyboardButton("➕ Add Token", switch_inline_query_current_chat='/addtoken $')],
-        [InlineKeyboardButton("📋 View Tokens", switch_inline_query_current_chat='/tokens')]
+        [InlineKeyboardButton("📋 View Tokens", switch_inline_query_current_chat='/tokens')],
+        [InlineKeyboardButton("📈 View Limits", callback_data='viewlimits'),
+         InlineKeyboardButton("⚙️ Set Limits", callback_data='setlimits')],
+        [InlineKeyboardButton("📜 Trade History", callback_data='tradehistory')]
     ])
 
 def start(update: Update, context: CallbackContext) -> None:
@@ -56,9 +57,7 @@ Use the buttons below or type:
 /new /alerts /debug  
 /pnl /sentiment /tradeprompt /classify  
 /watch &lt;wallet&gt; /addtoken $TOKEN /tokens  
-/sell <TOKEN_SYMBOL> <AMOUNT>  
-/setlimit <DAILY_LIMIT> <STOP_LOSS_PCT>  
-/tradehistory <TOKEN_SYMBOL>
+/viewlimits /setlimit /tradehistory
 
 Daily updates sent at 9AM Bangkok time (GMT+7).""",
         reply_markup=get_main_keyboard(),
@@ -86,11 +85,17 @@ def handle_callback(update: Update, context: CallbackContext) -> None:
         'pnl': get_pnl_report,
         'sentiment': get_sentiment_scores,
         'tradeprompt': get_trade_prompt,
-        'classify': get_narrative_classification
+        'classify': get_narrative_classification,
+        'viewlimits': lambda: "Use /viewlimits command to see your current trade limits.",
+        'setlimits': lambda: "Use /setlimit <daily_sell_limit> <stop_loss_pct> to set your trade limits.",
+        'tradehistory': lambda: "Use /tradehistory <TOKEN_SYMBOL> to view your trade history."
     }
 
-    result = func_map.get(command, lambda: "Unknown command")()
-    context.bot.send_message(chat_id=query.message.chat.id, text=result, parse_mode=ParseMode.HTML)
+    if command in func_map:
+        result = func_map[command]()
+        context.bot.send_message(chat_id=query.message.chat.id, text=result, parse_mode=ParseMode.HTML)
+    else:
+        context.bot.send_message(chat_id=query.message.chat.id, text="Unknown command", parse_mode=ParseMode.HTML)
 
 def watch_command(update: Update, context: CallbackContext) -> None:
     if len(context.args) < 1:
@@ -145,6 +150,12 @@ def removetoken_command(update: Update, context: CallbackContext) -> None:
 def debug_command(update: Update, context: CallbackContext) -> None:
     update.message.reply_text(simulate_debug_output(), parse_mode=ParseMode.HTML)
 
+# Trade commands
+dispatcher.add_handler(CommandHandler("viewlimits", view_limits_command))
+dispatcher.add_handler(CommandHandler("setlimit", set_limits_command))
+dispatcher.add_handler(CommandHandler("tradehistory", trade_history_command))
+
+# Regular commands
 dispatcher.add_handler(CommandHandler("start", start))
 dispatcher.add_handler(CommandHandler("panel", panel_command))
 dispatcher.add_handler(CommandHandler("max", lambda u, c: u.message.reply_text(get_max_token_stats(), parse_mode=ParseMode.HTML)))
@@ -161,12 +172,6 @@ dispatcher.add_handler(CommandHandler("pnl", lambda u, c: u.message.reply_text(g
 dispatcher.add_handler(CommandHandler("sentiment", lambda u, c: u.message.reply_text(get_sentiment_scores(), parse_mode=ParseMode.HTML)))
 dispatcher.add_handler(CommandHandler("tradeprompt", lambda u, c: u.message.reply_text(get_trade_prompt(), parse_mode=ParseMode.HTML)))
 dispatcher.add_handler(CommandHandler("classify", lambda u, c: u.message.reply_text(get_narrative_classification(), parse_mode=ParseMode.HTML)))
-
-# Trade commands
-dispatcher.add_handler(CommandHandler("setlimit", set_limits_command))
-dispatcher.add_handler(CommandHandler("viewlimits", view_limits_command))
-dispatcher.add_handler(CommandHandler("tradehistory", trade_history_command))
-dispatcher.add_handler(CommandHandler("sell", sell_command))
 
 dispatcher.add_handler(CallbackQueryHandler(handle_callback))
 
@@ -218,9 +223,8 @@ if __name__ == '__main__':
         BotCommand("classify", "Meme classification of tokens"),
         BotCommand("debug", "Run simulated debug outputs"),
         BotCommand("panel", "Show the main panel"),
-        BotCommand("setlimit", "Set your trade limits"),
         BotCommand("viewlimits", "View your trade limits"),
-        BotCommand("tradehistory", "View your trade history"),
-        BotCommand("sell", "Execute a sell trade")
+        BotCommand("setlimit", "Set daily sell limit and stop loss %"),
+        BotCommand("tradehistory", "View your trade history for a token")
     ])
     app.run(host='0.0.0.0', port=PORT)
