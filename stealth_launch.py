@@ -1,19 +1,15 @@
-import os
 import requests
+import os
 import logging
 from telegram import Bot
 from time import time
 
 logger = logging.getLogger(__name__)
 
-# To track tokens already alerted in the last X period
 _alerted_tokens = {}
-
-# Configurable alert cooldown (e.g. 30 minutes)
-ALERT_COOLDOWN_SECONDS = 1800
+ALERT_COOLDOWN_SECONDS = 1800  # 30 mins cooldown
 
 def fetch_new_tokens():
-    """Fetch recent token launches from Dexscreener or other API."""
     url = "https://api.dexscreener.com/latest/dex/tokens?chain=solana"
     try:
         resp = requests.get(url, timeout=10)
@@ -25,13 +21,12 @@ def fetch_new_tokens():
         return []
 
 def check_token_risk(token):
-    """Basic heuristics to flag risky tokens."""
     lp = token.get("liquidity", 0)
     locked = token.get("locked", False)
-    social_score = token.get("socialScore", 0)  # Placeholder for social metric
+    social_score = token.get("socialScore", 0)  # Placeholder
 
     risk_flags = []
-    if lp < 5000:  # Small LP threshold
+    if lp < 5000:
         risk_flags.append("Low LP")
     if not locked:
         risk_flags.append("No LP Lock")
@@ -41,7 +36,6 @@ def check_token_risk(token):
     return risk_flags
 
 def should_alert(token_symbol):
-    """Avoid repeat alerts within cooldown period."""
     now = time()
     last_alert = _alerted_tokens.get(token_symbol)
     if last_alert and now - last_alert < ALERT_COOLDOWN_SECONDS:
@@ -64,7 +58,7 @@ def scan_new_tokens(bot: Bot):
         if risk_flags:
             lp = token.get("liquidity", 0)
             price = token.get("price", 0)
-            url = token.get("url", "https://dexscreener.com")  # Dexscreener link if available
+            url = token.get("url", "https://dexscreener.com")
             flags_text = ", ".join(risk_flags)
 
             msg = (
