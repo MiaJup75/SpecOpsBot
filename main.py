@@ -16,8 +16,6 @@ from price_alerts import check_price_targets
 from stealth_launch import scan_new_tokens
 from mirror_watch import check_mirror_wallets
 from botnet import check_botnet_activity
-from gas_timing import check_gas_and_mev
-from tokens import handle_add_token, handle_tokens, handle_remove_token
 from wallet import Wallet
 
 logging.basicConfig(level=logging.INFO)
@@ -108,18 +106,51 @@ def wallets_command(update: Update, context: CallbackContext) -> None:
     msg = "<b>👛 Watched Wallets</b>\n" + "\n".join([f"• {label}\n<code>{addr}</code>" for label, addr in wallets])
     update.message.reply_text(msg, parse_mode=ParseMode.HTML)
 
+def addtoken_command(update: Update, context: CallbackContext) -> None:
+    if len(context.args) != 1:
+        update.message.reply_text("Usage: /addtoken $TOKEN")
+        return
+    symbol = context.args[0].lstrip("$")
+    try:
+        add_token(symbol)
+        update.message.reply_text(f"✅ Watching token: ${symbol.upper()}")
+    except Exception:
+        update.message.reply_text("⚠️ Error adding token.")
+
+def tokens_command(update: Update, context: CallbackContext) -> None:
+    tokens = get_tokens()
+    if not tokens:
+        update.message.reply_text("No tokens being watched.")
+        return
+    token_list = "\n".join([f"• ${t}" for t in tokens])
+    update.message.reply_text(f"<b>📋 Watched Tokens</b>\n{token_list}", parse_mode=ParseMode.HTML)
+
+def removetoken_command(update: Update, context: CallbackContext) -> None:
+    if len(context.args) != 1:
+        update.message.reply_text("Usage: /removetoken $TOKEN")
+        return
+    symbol = context.args[0].lstrip("$")
+    try:
+        remove_token(symbol)
+        update.message.reply_text(f"✅ Removed token: ${symbol.upper()}")
+    except Exception:
+        update.message.reply_text("⚠️ Error removing token.")
+
+def debug_command(update: Update, context: CallbackContext) -> None:
+    update.message.reply_text(simulate_debug_output(), parse_mode=ParseMode.HTML)
+
 dispatcher.add_handler(CommandHandler("start", start))
 dispatcher.add_handler(CommandHandler("panel", panel_command))
 dispatcher.add_handler(CommandHandler("max", lambda u, c: u.message.reply_text(get_max_token_stats(), parse_mode=ParseMode.HTML)))
 dispatcher.add_handler(CommandHandler("wallets", wallets_command))
 dispatcher.add_handler(CommandHandler("watch", watch_command))
-dispatcher.add_handler(CommandHandler("addtoken", handle_add_token))
-dispatcher.add_handler(CommandHandler("tokens", handle_tokens))
-dispatcher.add_handler(CommandHandler("removetoken", handle_remove_token))
+dispatcher.add_handler(CommandHandler("addtoken", addtoken_command))
+dispatcher.add_handler(CommandHandler("tokens", tokens_command))
+dispatcher.add_handler(CommandHandler("removetoken", removetoken_command))
 dispatcher.add_handler(CommandHandler("trending", lambda u, c: u.message.reply_text(get_trending_coins(), parse_mode=ParseMode.HTML)))
 dispatcher.add_handler(CommandHandler("new", lambda u, c: u.message.reply_text(get_new_tokens(), parse_mode=ParseMode.HTML)))
 dispatcher.add_handler(CommandHandler("alerts", lambda u, c: u.message.reply_text(get_suspicious_activity_alerts(), parse_mode=ParseMode.HTML)))
-dispatcher.add_handler(CommandHandler("debug", lambda u, c: u.message.reply_text(simulate_debug_output(), parse_mode=ParseMode.HTML)))
+dispatcher.add_handler(CommandHandler("debug", debug_command))
 dispatcher.add_handler(CommandHandler("pnl", lambda u, c: u.message.reply_text(get_pnl_report(), parse_mode=ParseMode.HTML)))
 dispatcher.add_handler(CommandHandler("sentiment", lambda u, c: u.message.reply_text(get_sentiment_scores(), parse_mode=ParseMode.HTML)))
 dispatcher.add_handler(CommandHandler("tradeprompt", lambda u, c: u.message.reply_text(get_trade_prompt(), parse_mode=ParseMode.HTML)))
@@ -134,7 +165,6 @@ jobs = [
     {"func": lambda: check_price_targets(updater.bot), "trigger": "interval", "minutes": 10},
     {"func": lambda: check_mirror_wallets(updater.bot), "trigger": "interval", "minutes": 10},
     {"func": lambda: check_botnet_activity(updater.bot), "trigger": "interval", "minutes": 10},
-    {"func": lambda: check_gas_and_mev(updater.bot), "trigger": "interval", "minutes": 15},
     {"func": lambda: send_daily_report(updater.bot), "trigger": "cron", "hour": 9, "minute": 0}
 ]
 
