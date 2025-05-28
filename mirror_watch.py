@@ -19,6 +19,7 @@ def fetch_wallet_activity(address):
 def check_mirror_wallets(bot: Bot):
     wallets = get_wallets()
     chat_id = os.getenv("CHAT_ID")
+
     for label, address in wallets:
         try:
             activity = fetch_wallet_activity(address)
