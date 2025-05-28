@@ -1,7 +1,9 @@
 import logging
 import os
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ParseMode, BotCommand, Bot
-from telegram.ext import Updater, CommandHandler, CallbackContext, CallbackQueryHandler, Dispatcher
+from telegram.ext import (
+    Updater, CommandHandler, CallbackContext, CallbackQueryHandler, Dispatcher
+)
 from flask import Flask, request
 from apscheduler.schedulers.background import BackgroundScheduler
 import pytz
@@ -11,13 +13,16 @@ from utils import (
     get_wallet_summary, get_full_daily_report, HELP_TEXT, simulate_debug_output,
     get_pnl_report, get_sentiment_scores, get_trade_prompt, get_narrative_classification
 )
-from db import init_db, add_wallet, get_wallets, add_token, get_tokens, remove_token
+from db import (
+    init_db, add_wallet, get_wallets, add_token, get_tokens, remove_token,
+    add_user, get_trade_history
+)
 from price_alerts import check_price_targets
 from stealth_launch import scan_new_tokens
 from mirror_watch import check_mirror_wallets
 from botnet import check_botnet_activity
-from gas_timing import check_gas_and_mev
 from wallet import Wallet
+from trade_executor import TradeExecutor
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -53,7 +58,8 @@ Use the buttons below or type:
 /max /wallets /trending  
 /new /alerts /debug  
 /pnl /sentiment /tradeprompt /classify  
-/watch &lt;wallet&gt; /addtoken $TOKEN /tokens
+/watch &lt;wallet&gt; /addtoken $TOKEN /tokens  
+/setlimit &lt;usd_amount&gt; /tradehistory
 
 Daily updates sent at 9AM Bangkok time (GMT+7).""",
         reply_markup=get_main_keyboard(),
@@ -140,6 +146,33 @@ def removetoken_command(update: Update, context: CallbackContext) -> None:
 def debug_command(update: Update, context: CallbackContext) -> None:
     update.message.reply_text(simulate_debug_output(), parse_mode=ParseMode.HTML)
 
+# New commands for user limits and trade history
+def setlimit_command(update: Update, context: CallbackContext) -> None:
+    user_id = update.effective_user.id
+    if len(context.args) != 1:
+        update.message.reply_text("Usage: /setlimit <daily_spend_limit_in_usd>")
+        return
+    try:
+        limit = float(context.args[0])
+        add_user(user_id, daily_spend_limit=limit)
+        update.message.reply_text(f"✅ Daily spend limit set to ${limit:.2f}")
+    except ValueError:
+        update.message.reply_text("⚠️ Invalid number for limit.")
+
+def tradehistory_command(update: Update, context: CallbackContext) -> None:
+    user_id = update.effective_user.id
+    history = get_trade_history(user_id)
+    if not history:
+        update.message.reply_text("No trade history found.")
+        return
+
+    msg_lines = ["<b>📜 Your Recent Trades</b>"]
+    for ts, ttype, symbol, amt, price, total in history:
+        line = f"{ts[:19]}: {ttype} {amt} {symbol} @ ${price:.6f} (Total: ${total:.2f})"
+        msg_lines.append(line)
+
+    update.message.reply_text("\n".join(msg_lines), parse_mode=ParseMode.HTML)
+
 dispatcher.add_handler(CommandHandler("start", start))
 dispatcher.add_handler(CommandHandler("panel", panel_command))
 dispatcher.add_handler(CommandHandler("max", lambda u, c: u.message.reply_text(get_max_token_stats(), parse_mode=ParseMode.HTML)))
@@ -157,6 +190,10 @@ dispatcher.add_handler(CommandHandler("sentiment", lambda u, c: u.message.reply_
 dispatcher.add_handler(CommandHandler("tradeprompt", lambda u, c: u.message.reply_text(get_trade_prompt(), parse_mode=ParseMode.HTML)))
 dispatcher.add_handler(CommandHandler("classify", lambda u, c: u.message.reply_text(get_narrative_classification(), parse_mode=ParseMode.HTML)))
 
+# Register new user limit and trade history handlers
+dispatcher.add_handler(CommandHandler("setlimit", setlimit_command))
+dispatcher.add_handler(CommandHandler("tradehistory", tradehistory_command))
+
 dispatcher.add_handler(CallbackQueryHandler(handle_callback))
 
 scheduler = BackgroundScheduler(timezone=pytz.timezone("Asia/Bangkok"))
@@ -166,7 +203,6 @@ jobs = [
     {"func": lambda: check_price_targets(updater.bot), "trigger": "interval", "minutes": 10},
     {"func": lambda: check_mirror_wallets(updater.bot), "trigger": "interval", "minutes": 10},
     {"func": lambda: check_botnet_activity(updater.bot), "trigger": "interval", "minutes": 10},
-    {"func": lambda: check_gas_and_mev(updater.bot), "trigger": "interval", "minutes": 15},
     {"func": lambda: send_daily_report(updater.bot), "trigger": "cron", "hour": 9, "minute": 0}
 ]
 
@@ -207,6 +243,8 @@ if __name__ == '__main__':
         BotCommand("tradeprompt", "AI-generated trade idea"),
         BotCommand("classify", "Meme classification of tokens"),
         BotCommand("debug", "Run simulated debug outputs"),
+        BotCommand("setlimit", "Set your daily trade spend limit"),
+        BotCommand("tradehistory", "View your recent trade history"),
         BotCommand("panel", "Show the main panel")
     ])
     app.run(host='0.0.0.0', port=PORT)
