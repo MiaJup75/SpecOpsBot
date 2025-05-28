@@ -1,0 +1,54 @@
+import unittest
+import sqlite3
+import os
+from db import init_db, add_wallet, get_wallets, add_token, get_tokens, remove_token, get_user_limits, set_user_limits, log_trade, get_trade_history
+
+class TestDatabase(unittest.TestCase):
+    def setUp(self):
+        # Use in-memory SQLite DB for testing
+        self.test_db = ":memory:"
+        # Patch DB_NAME to use in-memory
+        from db import DB_NAME
+        self.original_db_name = DB_NAME
+        from db import globals as db_globals
+        db_globals.DB_NAME = self.test_db
+        init_db()
+
+    def tearDown(self):
+        # Restore original DB_NAME
+        from db import globals as db_globals
+        db_globals.DB_NAME = self.original_db_name
+
+    def test_wallet_add_get(self):
+        add_wallet("Test Wallet", "wallet_address_123")
+        wallets = get_wallets()
+        self.assertIn(("Test Wallet", "wallet_address_123"), wallets)
+
+    def test_token_add_get_remove(self):
+        add_token("TEST")
+        tokens = get_tokens()
+        self.assertIn("TEST", tokens)
+        remove_token("TEST")
+        tokens = get_tokens()
+        self.assertNotIn("TEST", tokens)
+
+    def test_user_limits_set_get(self):
+        user_id = "user123"
+        set_user_limits(user_id, 1000.0, 5.0)
+        limits = get_user_limits(user_id)
+        self.assertEqual(limits.get("daily_sell_limit"), 1000.0)
+        self.assertEqual(limits.get("stop_loss_pct"), 5.0)
+
+    def test_log_and_get_trade_history(self):
+        user_id = "user123"
+        symbol = "MAX"
+        log_trade(user_id, symbol, "sell", 100, 0.001)
+        trades = get_trade_history(user_id, symbol)
+        self.assertEqual(len(trades), 1)
+        trade = trades[0]
+        self.assertEqual(trade["side"], "sell")
+        self.assertEqual(trade["amount"], 100)
+        self.assertEqual(trade["price"], 0.001)
+
+if __name__ == "__main__":
+    unittest.main()
