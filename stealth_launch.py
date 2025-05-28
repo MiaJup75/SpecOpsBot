@@ -1,17 +1,15 @@
-import requests
 import os
+import requests
 import logging
 from telegram import Bot
 from time import time
 
 logger = logging.getLogger(__name__)
 
-# Track alerted tokens with timestamps to avoid spam
 _alerted_tokens = {}
-ALERT_COOLDOWN_SECONDS = 1800  # 30 minutes cooldown between alerts for same token
+ALERT_COOLDOWN_SECONDS = 1800  # 30 minutes cooldown
 
 def fetch_new_tokens():
-    """Fetch recent token launches from Dexscreener or similar API."""
     url = "https://api.dexscreener.com/latest/dex/tokens?chain=solana"
     try:
         resp = requests.get(url, timeout=10)
@@ -23,10 +21,9 @@ def fetch_new_tokens():
         return []
 
 def check_token_risk(token):
-    """Apply heuristics to flag risky tokens."""
     lp = token.get("liquidity", 0)
     locked = token.get("locked", False)
-    social_score = token.get("socialScore", 0)  # Placeholder
+    social_score = token.get("socialScore", 0)  # placeholder
 
     risk_flags = []
     if lp < 5000:
@@ -38,12 +35,12 @@ def check_token_risk(token):
 
     return risk_flags
 
-def should_alert(token_symbol):
+def should_alert(symbol):
     now = time()
-    last_alert = _alerted_tokens.get(token_symbol)
+    last_alert = _alerted_tokens.get(symbol)
     if last_alert and (now - last_alert) < ALERT_COOLDOWN_SECONDS:
         return False
-    _alerted_tokens[token_symbol] = now
+    _alerted_tokens[symbol] = now
     return True
 
 def scan_new_tokens(bot: Bot):
@@ -53,17 +50,14 @@ def scan_new_tokens(bot: Bot):
         symbol = token.get("symbol", "").upper()
         if not symbol:
             continue
-
         if not should_alert(symbol):
             continue
-
         risk_flags = check_token_risk(token)
         if risk_flags:
             lp = token.get("liquidity", 0)
             price = token.get("price", 0)
             url = token.get("url", "https://dexscreener.com")
             flags_text = ", ".join(risk_flags)
-
             msg = (
                 f"🚨 <b>New Token Alert: ${symbol}</b>\n"
                 f"Price: ${price:.6f}\n"
