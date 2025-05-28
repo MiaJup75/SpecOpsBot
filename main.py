@@ -17,7 +17,6 @@ from stealth_launch import scan_new_tokens
 from mirror_watch import check_mirror_wallets
 from botnet import check_botnet_activity
 from wallet import Wallet
-from help_and_ai import tradeprompt_command  # Import your new command handler here
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -154,7 +153,7 @@ dispatcher.add_handler(CommandHandler("alerts", lambda u, c: u.message.reply_tex
 dispatcher.add_handler(CommandHandler("debug", debug_command))
 dispatcher.add_handler(CommandHandler("pnl", lambda u, c: u.message.reply_text(get_pnl_report(), parse_mode=ParseMode.HTML)))
 dispatcher.add_handler(CommandHandler("sentiment", lambda u, c: u.message.reply_text(get_sentiment_scores(), parse_mode=ParseMode.HTML)))
-dispatcher.add_handler(CommandHandler("tradeprompt", tradeprompt_command))
+dispatcher.add_handler(CommandHandler("tradeprompt", lambda u, c: u.message.reply_text(get_trade_prompt(), parse_mode=ParseMode.HTML)))
 dispatcher.add_handler(CommandHandler("classify", lambda u, c: u.message.reply_text(get_narrative_classification(), parse_mode=ParseMode.HTML)))
 
 dispatcher.add_handler(CallbackQueryHandler(handle_callback))
