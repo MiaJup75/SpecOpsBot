@@ -7,10 +7,10 @@ logger = logging.getLogger(__name__)
 def check_botnet_activity(bot: Bot):
     chat_id = os.getenv("CHAT_ID")
     try:
-        # Placeholder: Replace with real botnet detection data/API
+        # Placeholder: replace with real botnet detection logic
         alerts = [
-            "Botnet detected suspicious trading on $FAKE",
-            "Unusual volume spike on $SCAM",
+            "Botnet detected activity on $FAKE",
+            "Suspicious volume on $SCAM",
         ]
         for alert in alerts:
             bot.send_message(chat_id=chat_id, text=f"🚨 {alert}")
