@@ -1,15 +1,17 @@
-import requests
 import os
+import requests
 import logging
 from telegram import Bot
 from time import time
 
 logger = logging.getLogger(__name__)
 
+# To avoid repeated alerts for the same token within cooldown period
 _alerted_tokens = {}
-ALERT_COOLDOWN_SECONDS = 1800  # 30 mins cooldown
+ALERT_COOLDOWN_SECONDS = 1800  # 30 minutes cooldown
 
 def fetch_new_tokens():
+    """Fetch recent token launches from Dexscreener or other API."""
     url = "https://api.dexscreener.com/latest/dex/tokens?chain=solana"
     try:
         resp = requests.get(url, timeout=10)
@@ -21,9 +23,10 @@ def fetch_new_tokens():
         return []
 
 def check_token_risk(token):
+    """Flag risky tokens based on heuristics."""
     lp = token.get("liquidity", 0)
     locked = token.get("locked", False)
-    social_score = token.get("socialScore", 0)  # Placeholder
+    social_score = token.get("socialScore", 0)  # Placeholder for social metric
 
     risk_flags = []
     if lp < 5000:
@@ -36,6 +39,7 @@ def check_token_risk(token):
     return risk_flags
 
 def should_alert(token_symbol):
+    """Avoid duplicate alerts within cooldown window."""
     now = time()
     last_alert = _alerted_tokens.get(token_symbol)
     if last_alert and now - last_alert < ALERT_COOLDOWN_SECONDS:
@@ -46,6 +50,7 @@ def should_alert(token_symbol):
 def scan_new_tokens(bot: Bot):
     chat_id = os.getenv("CHAT_ID")
     tokens = fetch_new_tokens()
+
     for token in tokens:
         symbol = token.get("symbol", "").upper()
         if not symbol:
