@@ -1,7 +1,7 @@
 from telegram import Update
 from telegram.ext import CallbackContext
 from db import get_user_limits, set_user_limits, get_trade_history, log_trade
-from trade_executor import TradeExecutor
+from trade_executor import execute_sell
 
 def view_limits_command(update: Update, context: CallbackContext) -> None:
     user_id = str(update.effective_user.id)
@@ -55,33 +55,22 @@ def trade_history_command(update: Update, context: CallbackContext) -> None:
     update.message.reply_text(msg)
 
 def sell_command(update: Update, context: CallbackContext) -> None:
-    if len(context.args) < 3:
-        update.message.reply_text("Usage: /sell TOKEN AMOUNT PRICE")
-        return
-
-    token = context.args[0].upper()
-    try:
-        amount = float(context.args[1])
-        price = float(context.args[2])
-    except ValueError:
-        update.message.reply_text("Amount and price must be numbers.")
-        return
-
     user_id = str(update.effective_user.id)
-    limits = get_user_limits(user_id)
+    args = context.args
 
-    # Check if amount exceeds daily sell limit
-    daily_limit = limits.get("daily_sell_limit")
-    if daily_limit is not None and amount > daily_limit:
-        update.message.reply_text(f"⚠️ Sell amount exceeds your daily limit of {daily_limit}.")
+    if len(args) < 2:
+        update.message.reply_text("Usage: /sell <TOKEN_SYMBOL> <AMOUNT>")
         return
 
-    executor = TradeExecutor(user_id)
+    token_symbol = args[0].upper()
+    try:
+        amount = float(args[1])
+    except ValueError:
+        update.message.reply_text("Amount must be a number.")
+        return
 
-    success = executor.execute_sell(token, amount, price)
+    success, message = execute_sell(user_id, token_symbol, amount)
     if success:
-        # Log trade to DB
-        log_trade(user_id, token, "sell", amount, price)
-        update.message.reply_text(f"✅ Sell order executed: {amount} {token} at ${price}")
+        update.message.reply_text(f"✅ Sell order executed: {amount} {token_symbol}\n{message}")
     else:
-        update.message.reply_text("⚠️ Sell order failed or exceeds limits.")
+        update.message.reply_text(f"⚠️ Sell failed: {message}")
