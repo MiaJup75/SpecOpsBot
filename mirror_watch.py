@@ -1,10 +1,23 @@
-import os
 import requests
+import os
 import logging
 from db import get_wallets
 from telegram import Bot
+import time
 
 logger = logging.getLogger(__name__)
+
+# Throttle alerts per wallet address
+_last_alert_times = {}
+ALERT_COOLDOWN_SECONDS = 1800  # 30 minutes cooldown
+
+def can_alert(address: str) -> bool:
+    now = time.time()
+    last_alert = _last_alert_times.get(address)
+    if last_alert and now - last_alert < ALERT_COOLDOWN_SECONDS:
+        return False
+    _last_alert_times[address] = now
+    return True
 
 def fetch_wallet_activity(address):
     url = f"https://public-api.solscan.io/account/tokens?account={address}"
@@ -22,9 +35,12 @@ def check_mirror_wallets(bot: Bot):
 
     for label, address in wallets:
         try:
+            if not can_alert(address):
+                continue  # Skip alert if in cooldown period
+
             activity = fetch_wallet_activity(address)
-            # Here implement real logic: detect buys, sells, token changes, etc.
-            # Example placeholder message:
+            # TODO: Add real detection logic for buys/sells here
+
             msg = f"🔍 Checked wallet '{label}' ({address[:6]}...{address[-6:]}) - Recent activity found."
             bot.send_message(chat_id=chat_id, text=msg)
         except Exception as e:
