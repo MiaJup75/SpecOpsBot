@@ -1,44 +1,33 @@
 import os
-import requests
-from telegram import Bot
 import logging
-from time import time
+from telegram import Bot
 
 logger = logging.getLogger(__name__)
 
-_alerted_tokens = {}
-ALERT_COOLDOWN = 1800  # 30 minutes cooldown
+# Example list of flagged botnet wallet addresses (replace with real data source)
+BOTNET_WALLETS = {
+    "SomeBotnetWalletAddress1",
+    "SomeBotnetWalletAddress2",
+    # Add real known botnet wallets here
+}
 
-def fetch_botnet_alerts():
-    # Placeholder: Replace with real API or logic to get suspicious tokens and alerts
-    # Example return: [{"token": "FAKE", "alert": "Botnet detected activity"}, ...]
-    try:
-        # Example static, replace with your real data fetch
-        return [
-            {"token": "FAKE", "alert": "Botnet detected activity"},
-            {"token": "SCAM", "alert": "Suspicious volume detected"},
-        ]
-    except Exception as e:
-        logger.error(f"[Botnet] Failed to fetch alerts: {e}")
-        return []
+def fetch_suspicious_botnet_activity():
+    # Placeholder: Replace with real botnet activity detection logic or API calls
+    # For example, scan recent transactions from flagged wallets
+    # Return a list of alerts strings
+    alerts = []
+
+    # Simulated example alerts:
+    alerts.append("Botnet wallet SomeBotnetWalletAddress1 made a large sell order on $FAKE")
+    alerts.append("Suspicious wash trade detected involving $SCAM")
+
+    return alerts
 
 def check_botnet_activity(bot: Bot):
     chat_id = os.getenv("CHAT_ID")
-    alerts = fetch_botnet_alerts()
-    now = time()
-
-    for alert_info in alerts:
-        token = alert_info["token"]
-        alert_msg = alert_info["alert"]
-
-        # Check cooldown
-        last_alert_time = _alerted_tokens.get(token)
-        if last_alert_time and (now - last_alert_time) < ALERT_COOLDOWN:
-            continue  # Skip repeated alert within cooldown
-
-        # Send alert
-        try:
-            bot.send_message(chat_id=chat_id, text=f"🚨 {alert_msg} on ${token}")
-            _alerted_tokens[token] = now
-        except Exception as e:
-            logger.error(f"[Botnet] Error sending alert for {token}: {e}")
+    try:
+        alerts = fetch_suspicious_botnet_activity()
+        for alert in alerts:
+            bot.send_message(chat_id=chat_id, text=f"🚨 {alert}")
+    except Exception as e:
+        logger.error(f"[Botnet] Error during botnet activity check: {e}")
