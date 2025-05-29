@@ -30,22 +30,22 @@ dispatcher: Dispatcher = updater.dispatcher
 
 def get_main_keyboard():
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("👛 Wallets", callback_data='wallets')],
-        [InlineKeyboardButton("📈 Trending", callback_data='trending'),
-         InlineKeyboardButton("🆕 New", callback_data='new')],
-        [InlineKeyboardButton("🚨 Alerts", callback_data='alerts'),
-         InlineKeyboardButton("📊 PnL", callback_data='pnl')],
-        [InlineKeyboardButton("🧠 Meme Sentiment", callback_data='sentiment'),
-         InlineKeyboardButton("🤖 Trade Prompt", callback_data='tradeprompt')],
-        [InlineKeyboardButton("🔠 Meme Classification", callback_data='classify')],
+        [InlineKeyboardButton("\U0001F4B3 Wallets", callback_data='wallets')],
+        [InlineKeyboardButton("\U0001F4C8 Trending", callback_data='trending'),
+         InlineKeyboardButton("\U0001F195 New", callback_data='new')],
+        [InlineKeyboardButton("\U0001F6A8 Alerts", callback_data='alerts'),
+         InlineKeyboardButton("\U0001F4CA PnL", callback_data='pnl')],
+        [InlineKeyboardButton("\U0001F9E0 Meme Sentiment", callback_data='sentiment'),
+         InlineKeyboardButton("\U0001F916 Trade Prompt", callback_data='tradeprompt')],
+        [InlineKeyboardButton("\U0001F520 Meme Classification", callback_data='classify')],
         [InlineKeyboardButton("➕ Add Wallet", switch_inline_query_current_chat='/watch '),
          InlineKeyboardButton("➕ Add Token", switch_inline_query_current_chat='/addtoken $')],
-        [InlineKeyboardButton("📋 View Tokens", switch_inline_query_current_chat='/tokens')]
+        [InlineKeyboardButton("\U0001F4CB View Tokens", switch_inline_query_current_chat='/tokens')]
     ])
 
 def start(update: Update, context: CallbackContext) -> None:
     update.message.reply_text(
-        """<b>👋 Welcome to SpecOpsBot!</b>
+        """<b>\U0001F44B Welcome to SpecOpsBot!</b>
 
 Use the buttons below or type:
 /wallets /trending /new  
@@ -60,7 +60,7 @@ Daily updates sent at 9AM Bangkok time (GMT+7).""",
 
 def panel_command(update: Update, context: CallbackContext) -> None:
     update.message.reply_text(
-        "🔘 <b>SpecOpsBot Panel</b>\nTap a button below:",
+        "\U0001F518 <b>SpecOpsBot Panel</b>\nTap a button below:",
         reply_markup=get_main_keyboard(),
         parse_mode=ParseMode.HTML
     )
@@ -101,7 +101,7 @@ def wallets_command(update: Update, context: CallbackContext) -> None:
     if not wallets:
         update.message.reply_text("No wallets being tracked.")
         return
-    msg = "<b>👛 Watched Wallets</b>\n" + "\n".join([f"• {label}\n<code>{addr}</code>" for label, addr in wallets])
+    msg = "<b>\U0001F4B3 Watched Wallets</b>\n" + "\n".join([f"• {label}\n<code>{addr}</code>" for label, addr in wallets])
     update.message.reply_text(msg, parse_mode=ParseMode.HTML)
 
 def addtoken_command(update: Update, context: CallbackContext) -> None:
@@ -121,7 +121,7 @@ def tokens_command(update: Update, context: CallbackContext) -> None:
         update.message.reply_text("No tokens being watched.")
         return
     token_list = "\n".join([f"• ${t}" for t in tokens])
-    update.message.reply_text(f"<b>📋 Watched Tokens</b>\n{token_list}", parse_mode=ParseMode.HTML)
+    update.message.reply_text(f"<b>\U0001F4CB Watched Tokens</b>\n{token_list}", parse_mode=ParseMode.HTML)
 
 def removetoken_command(update: Update, context: CallbackContext) -> None:
     if len(context.args) != 1:
