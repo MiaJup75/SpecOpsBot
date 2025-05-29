@@ -2,8 +2,11 @@ from telegram import Update, ParseMode
 from telegram.ext import CallbackContext
 from db import get_trade_history
 
+def get_pnl_report(user_id=None, token_symbol=None):
+    """Flexible signature: allows calling with no args for main.py compatibility"""
+    if not user_id or not token_symbol:
+        return "PnL report: Please specify user and token."
 
-def get_pnl_report(user_id, token_symbol):
     trades = get_trade_history(user_id, token_symbol)
     if not trades:
         return f"No trades found for ${token_symbol}."
@@ -25,7 +28,6 @@ def get_pnl_report(user_id, token_symbol):
     report += f"<b>Total Sells:</b> {total_sell_qty:.2f} at avg ${avg_sell_price:.4f}\n"
     report += f"<b>Realized PnL:</b> ${realized_pnl:.2f}"
     return report
-
 
 def handle_pnl_command(update: Update, context: CallbackContext):
     user_id = str(update.effective_user.id)
