@@ -1,6 +1,16 @@
+# render.yaml – Render.com deploy config (Python / Webhook)
+
 services:
   - type: web
-    name: solmad-spec-bot
+    name: specopsbot
     env: python
     buildCommand: pip install -r requirements.txt
     startCommand: python main.py
+    envVars:
+      - key: BOT_TOKEN
+        sync: false
+      - key: CHAT_ID
+        sync: false
+      - key: SQLITE_PATH
+        value: tokens.db
+    autoDeploy: true
