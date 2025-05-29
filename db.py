@@ -1,58 +1,20 @@
 import sqlite3
+import logging
 
-DB_NAME = "solmad.db"
+logger = logging.getLogger(__name__)
 
-def init_db():
-    conn = sqlite3.connect(DB_NAME)
-    c = conn.cursor()
-    # Wallet watchlist with labels and last transaction tracking
-    c.execute('''
-        CREATE TABLE IF NOT EXISTS wallets (
-            label TEXT,
-            address TEXT PRIMARY KEY,
-            last_tx TEXT
-        )
-    ''')
-    # Token tracking list
-    c.execute('''
-        CREATE TABLE IF NOT EXISTS tokens (
-            symbol TEXT PRIMARY KEY
-        )
-    ''')
-    # User trade limits and history
-    c.execute('''
-        CREATE TABLE IF NOT EXISTS users (
-            user_id TEXT PRIMARY KEY,
-            daily_sell_limit REAL DEFAULT 0,
-            stop_loss_pct REAL DEFAULT 0
-        )
-    ''')
-    c.execute('''
-        CREATE TABLE IF NOT EXISTS trades (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id TEXT,
-            token_symbol TEXT,
-            side TEXT,
-            amount REAL,
-            price REAL,
-            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
-        )
-    ''')
-    conn.commit()
-    conn.close()
-
-def add_wallet(label, address):
-    conn = sqlite3.connect(DB_NAME)
-    c = conn.cursor()
-    c.execute("INSERT OR IGNORE INTO wallets (label, address) VALUES (?, ?)", (label, address))
-    conn.commit()
-    conn.close()
+DB_NAME = "specopsbot.db"
 
 def get_wallets():
     conn = sqlite3.connect(DB_NAME)
     c = conn.cursor()
-    c.execute("SELECT label, address FROM wallets")
-    results = c.fetchall()
+    try:
+        c.execute("SELECT label, address FROM wallets")
+        results = [row for row in c.fetchall()]
+    except sqlite3.OperationalError:
+        # fallback for legacy schema
+        c.execute("SELECT address FROM wallets")
+        results = [("", row[0]) for row in c.fetchall()]
     conn.close()
     return results
 
@@ -68,6 +30,24 @@ def update_wallet_last_tx(address: str, last_tx: str):
     conn = sqlite3.connect(DB_NAME)
     c = conn.cursor()
     c.execute("UPDATE wallets SET last_tx = ? WHERE address = ?", (last_tx, address))
+    conn.commit()
+    conn.close()
+
+def add_wallet(label, address):
+    conn = sqlite3.connect(DB_NAME)
+    c = conn.cursor()
+    try:
+        c.execute("INSERT OR IGNORE INTO wallets (label, address) VALUES (?, ?)", (label, address))
+    except sqlite3.OperationalError:
+        # fallback if old schema without label
+        c.execute("INSERT OR IGNORE INTO wallets (address) VALUES (?)", (address,))
+    conn.commit()
+    conn.close()
+
+def remove_wallet(address):
+    conn = sqlite3.connect(DB_NAME)
+    c = conn.cursor()
+    c.execute("DELETE FROM wallets WHERE address = ?", (address,))
     conn.commit()
     conn.close()
 
@@ -93,7 +73,6 @@ def remove_token(symbol):
     conn.commit()
     conn.close()
 
-# User limits & trade history (example methods - you can expand as needed)
 def get_user_limits(user_id):
     conn = sqlite3.connect(DB_NAME)
     c = conn.cursor()
@@ -144,3 +123,29 @@ def get_trade_history(user_id, token_symbol):
             "timestamp": row[3],
         })
     return trades
+
+def init_db():
+    conn = sqlite3.connect(DB_NAME)
+    c = conn.cursor()
+    # Wallets
+    try:
+        c.execute("CREATE TABLE IF NOT EXISTS wallets (label TEXT, address TEXT UNIQUE, last_tx TEXT)")
+    except Exception as e:
+        logger.error(f"Error creating wallets table: {e}")
+    # Tokens
+    try:
+        c.execute("CREATE TABLE IF NOT EXISTS tokens (symbol TEXT UNIQUE)")
+    except Exception as e:
+        logger.error(f"Error creating tokens table: {e}")
+    # Users
+    try:
+        c.execute("CREATE TABLE IF NOT EXISTS users (user_id TEXT PRIMARY KEY, daily_sell_limit REAL, stop_loss_pct REAL)")
+    except Exception as e:
+        logger.error(f"Error creating users table: {e}")
+    # Trades
+    try:
+        c.execute("CREATE TABLE IF NOT EXISTS trades (user_id TEXT, token_symbol TEXT, side TEXT, amount REAL, price REAL, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)")
+    except Exception as e:
+        logger.error(f"Error creating trades table: {e}")
+    conn.commit()
+    conn.close()
