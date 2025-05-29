@@ -34,6 +34,19 @@ def fetch_trending_tokens(limit=10):
         print(f"Error fetching trending tokens: {e}")
         return []
 
+def get_trending_coins():
+    trending = fetch_trending_tokens()
+    if not trending:
+        return "⚠️ Could not fetch trending tokens."
+
+    msg = "<b>🔥 Top Trending Solana Tokens</b>\n"
+    for token in trending:
+        msg += f"\n<b>{token['symbol']}</b> – ${float(token['price']):.4f}\n"
+        msg += f"💰 MCap: ${int(token['market_cap']):,} | 📊 Vol: ${int(token['volume']):,}\n"
+        msg += f"<a href='{token['link']}'>🔗 Dexscreener</a>\n"
+        msg += "—" * 15 + "\n"
+    return msg
+
 def handle_trending_command(update: Update, context: CallbackContext):
     trending = fetch_trending_tokens()
     if not trending:
