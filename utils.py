@@ -1,203 +1,89 @@
-import datetime
+# utils.py – Token Stat Fetcher, Wallet SPL Parser, Formatting Tools
+
 import requests
+import base58
+import time
+from collections import defaultdict
 
-def get_max_token_stats() -> str:
+cooldowns = defaultdict(float)
+
+def get_spl_tokens_from_wallet(wallet_address, min_balance=1):
     try:
-        pair_address = "8fipyfvbusjpuv2wwyk8eppnk5f9dgzs8uasputwszdc"
-        url = f"https://api.dexscreener.com/latest/dex/pairs/solana/{pair_address}"
-        response = requests.get(url, timeout=5).json()
-
-        if 'pair' not in response:
-            return "⚠️ MAX token data unavailable."
-
-        p = response['pair']
-        price = p['priceUsd']
-        market_cap = float(p.get('marketCap', 0))
-        volume = float(p['volume']['h24'])
-        liquidity = float(p['liquidity']['usd'])
-        buys = p['txns']['h24']['buys']
-        sells = p['txns']['h24']['sells']
-        change = float(p.get('priceChange', {}).get('h24', 0))
-        fdv = float(p.get('fdv', 0))
-        launch_ts = int(p.get('pairCreatedAt', 0))
-        launch_date = datetime.datetime.fromtimestamp(launch_ts / 1000).strftime('%Y-%m-%d %H:%M:%S')
-        pair_name = p.get("baseToken", {}).get("symbol", "MAX")
-
-        dex_link = f"https://dexscreener.com/solana/{pair_address}"
-
-        return f"""
-<b>🐶 MAX Token Update</b>
-
-📈 <b>Price:</b> ${price}
-💰 <b>Market Cap:</b> ${market_cap:,.0f}
-🌿 <b>Volume (24h):</b> ${volume:,.2f}
-💵 <b>FDV:</b> ${fdv:,.0f}
-📊 <b>Buys:</b> {buys} | <b>Sells:</b> {sells}
-💧 <b>Liquidity:</b> ${liquidity:,.2f}
-🕒 <b>24H Change:</b> {change}%
-📅 <b>Launch Date:</b> {launch_date}
-🔗 <a href='{dex_link}'>View on Dexscreener</a>
-"""
+        url = f"https://api.mainnet-beta.solana.com"
+        headers = {"Content-Type": "application/json"}
+        payload = {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "getTokenAccountsByOwner",
+            "params": [
+                wallet_address,
+                {"programId": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"},
+                {"encoding": "jsonParsed"}
+            ]
+        }
+        response = requests.post(url, json=payload, headers=headers, timeout=10)
+        token_accounts = response.json().get("result", {}).get("value", [])
+        tokens = []
+        for acc in token_accounts:
+            info = acc["account"]["data"]["parsed"]["info"]
+            amount = int(info["tokenAmount"]["amount"])
+            decimals = int(info["tokenAmount"]["decimals"])
+            ui_amount = amount / (10 ** decimals) if decimals > 0 else amount
+            if ui_amount >= min_balance:
+                tokens.append({
+                    "symbol": info.get("mint")[:6],  # Temp symbol fallback
+                    "address": info.get("mint"),
+                    "balance": ui_amount
+                })
+        return tokens
     except Exception:
-        return f"⚠️ Unable to fetch MAX token data."
+        return []
 
-def get_trending_coins() -> str:
-    return """<b>📈 Top 5 Trending Solana Meme Coins</b>
+def get_token_stats(token_address):
+    url = f"https://api.dexscreener.com/latest/dex/pairs/solana/{token_address}"
+    r = requests.get(url, timeout=10)
+    data = r.json()
 
-1. BONK – +65% 🔥  
-2. MEOW – +38%  
-3. CHAD – +34%  
-4. WEN – +27%  
-5. SLERF – +24%
+    pair = data.get("pair")
+    if not pair:
+        raise ValueError("Token not found")
 
-<i>Data from DEX volume & Telegram buzz</i>
-"""
+    return {
+        "symbol": pair.get("baseToken", {}).get("symbol", ""),
+        "priceUsd": float(pair.get("priceUsd", 0)),
+        "marketCap": float(pair.get("fdv", 0)),
+        "volume24h": float(pair.get("volume", 0)),
+        "liquidity": float(pair.get("liquidity", {}).get("usd", 0)),
+        "txns": pair.get("txns", {}),
+        "createdAt": pair.get("pairCreatedAt"),
+        "dex": pair.get("dexId"),
+        "url": f"https://dexscreener.com/solana/{token_address}"
+    }
 
-def get_new_tokens() -> str:
-    return """<b>🆕 New Token Launches (&lt;24h)</b>
+def format_token_stats(stats, label=None):
+    buys = stats["txns"].get("buys", "?")
+    sells = stats["txns"].get("sells", "?")
+    launch = time.strftime('%Y-%m-%d', time.gmtime(stats["createdAt"] // 1000)) if stats["createdAt"] else "N/A"
 
-• $LOOT – LP $8.4K – Locked 7d ✅  
-• $ZOOM – LP $5.9K – Unlocks in 12h ⚠️  
-• $RUGME – LP $3.1K – No lock ❌
+    return (
+        f"<b>{stats['symbol']}</b> — <code>${stats['priceUsd']:.5f}</code>\n"
+        f"📊 MC: ${int(stats['marketCap']):,} | 24h Vol: ${int(stats['volume24h']):,}\n"
+        f"💧 LP: ${int(stats['liquidity']):,} | 📈 {buys} Buys / {sells} Sells\n"
+        f"📅 Launch: {launch} | 🔗 <a href='{stats['url']}'>View</a>"
+    )
 
-<i>Click /alerts for suspicious flags</i>
-"""
-
-def get_suspicious_activity_alerts() -> str:
-    return """<b>🚨 Suspicious Activity</b>
-
-• DEV wallet sold 30% of $CHEEMS  
-• LP for $FAKE withdrawn (-70%)  
-• Botnet activity on $ZOOM  
-• Whale exit from $SLURP (500M tokens)
-
-<i>Monitored wallets + LP changes</i>
-"""
-
-def get_wallet_summary() -> str:
-    return """<b>👛 Wallet Watch Summary</b>
-
-• Main Wallet – No suspicious activity  
-• Trojan Wallet – 1 new buy (1.5 SOL)  
-• Burner Wallet – Idle  
-
-MAX token top wallet sold 115K tokens  
-LP unchanged in past 24h
-"""
-
-def get_full_daily_report() -> str:
-    today = datetime.date.today()
-    return f"""<b>🌞 Daily Solana Meme Report – {today}</b>
-
-📈 <b>Trending Coins</b>  
-1. BONK – +65%  
-2. MEOW – +38%  
-3. CHAD – +34%
-
-🆕 <b>New Tokens</b>  
-• $LOOT – LP $8.4K – Locked  
-• $ZOOM – LP $5.9K – Unlocks soon
-
-🚨 <b>Alerts</b>  
-• DEV dumped $CHEEMS  
-• $FAKE LP pulled
-
-💰 <b>MAX Token</b>  
-{get_max_token_stats().replace('<b>', '').replace('</b>', '')}
-
-👛 <b>Wallets</b>  
-• Trojan: 1 buy  
-• MAX: 115K sold
-
-🧠 <b>Sentiment</b>  
-$DUBI – 8.7/10  
-$ZAP – 6.1/10  
-$FAKE – 2.8/10
-
-🤖 <b>Trade Prompt</b>  
-Watch $DUBI < $0.000021
-
-🔠 <b>Narratives</b>  
-$DUBI – Dubai  
-$ZAP – AI  
-$FAKE – None
-"""
-
-def simulate_debug_output() -> str:
-    return """<b>🧪 Debug Simulation</b>
-
-Simulated /new:  
-• $TEST – LP $4.2K – Locked ✅  
-• $FAKE – LP $6.8K – No lock ❌  
-
-Simulated /alerts:  
-• Whale dumped 900K $SIM  
-
-<i>This is dummy data for debug only</i>
-"""
-
-def get_pnl_report() -> str:
-    return """<b>📊 MAX Token PnL Report</b>
-
-• Holdings: 10.45M MAX  
-• Average Buy: 0.000028  
-• Current Price: 0.000030  
-• Unrealized PnL: +7.1%  
-• Target Exit: $500K Market Cap  
-• Sell Plan: 2M tokens @ 0.000050
-
-<i>Last updated: Today</i>
-"""
-
-def get_sentiment_scores() -> str:
-    return """<b>🧠 Meme Sentiment Scores</b>
-
-• $DUBI – 8.7/10 😍  
-• $ZAP – 6.1/10 😐  
-• $FAKE – 2.8/10 💩
-
-<i>Based on emoji density, TG spam, and tweet velocity</i>
-"""
-
-def get_trade_prompt() -> str:
-    return """<b>📈 AI Trade Prompt</b>
-
-🧠 Trend: Bullish  
-🔎 Trigger: Wallet ABC bought 2.1 SOL of $ZAZA  
-📉 Support: 0.000024 | 📈 Target: 0.000038
-
-Suggested Entry: 0.000027
-Risk Level: Medium
-
-<i>Backtested against mirror wallet clusters</i>
-"""
-
-def get_narrative_classification() -> str:
-    return """<b>🔠 Narrative Classifications</b>
-
-• $ZAZA – Dubai / Wealth  
-• $CHAD – Masculinity / Gym / Hustle  
-• $SIMP – Memecoin / Sarcasm  
-• $AIPEPE – AI + Meme
-
-<i>Generated using trending hashtags and X mentions</i>
-"""
-
-HELP_TEXT = """<b>🛠 Available Commands:</b>
-
-/max – View MAX token stats  
-/wallets – See tracked wallet updates  
-/trending – Top trending meme coins  
-/new – Tokens launched in last 24h  
-/alerts – Whale/dev/LP risk alerts  
-/debug – Simulated output for testing  
-/pnl – Show MAX token break-even stats  
-/sentiment – Emoji/meme score for trending tokens  
-/tradeprompt – Smart suggestion based on wallet activity  
-/classify – Tag token narratives using AI  
-/watch – Add wallet to your watchlist  
-/addtoken – Track a token on your list  
-/tokens – Show tracked token list  
-/autobuy – Auto-buy token command  
-/sync – Sync trending tokens list
-"""
+def get_trending_coins(limit=10):
+    try:
+        url = "https://api.dexscreener.com/latest/dex/pairs/solana"
+        r = requests.get(url, timeout=10)
+        pairs = r.json().get("pairs", [])
+        trending = []
+        for p in pairs[:limit]:
+            symbol = p.get("baseToken", {}).get("symbol", "???")
+            price = float(p.get("priceUsd", 0))
+            vol = int(p.get("volume", 0))
+            url = f"https://dexscreener.com/solana/{p.get('pairAddress')}"
+            trending.append(f"<b>{symbol}</b> - ${price:.5f} | Vol: ${vol:,} | <a href='{url}'>Chart</a>")
+        return "<b>🔥 Top 10 Trending Solana Tokens</b>\n\n" + "\n".join(trending)
+    except Exception:
+        return "⚠️ Could not fetch trending coins."
