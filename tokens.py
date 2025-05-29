@@ -1,42 +1,49 @@
-# tokens.py – Tier 5.2 Coins Held View
+# tokens.py – Token Watch Commands & Utilities
 
-from db import get_wallets
-from utils import get_spl_tokens_from_wallet, get_token_stats, format_token_stats
-from telegram import Update
+from telegram import Update, ParseMode
 from telegram.ext import CallbackContext
+from db import add_token, get_tokens, remove_token
 
-def handle_tokens_command(update: Update, context: CallbackContext, via_callback=False):
-    wallets = get_wallets()
-    
-    if not wallets:
-        message = "<b>Coins Held:</b>\n\n<i>No wallets are being tracked yet.</i>\nUse /watch to add one."
-        _send_response(update, message, via_callback)
+def handle_addtoken_command(update: Update, context: CallbackContext):
+    if len(context.args) != 1:
+        update.message.reply_text("Usage: /addtoken $TOKEN")
         return
 
-    all_tokens = []
-    for label, wallet in wallets:
-        tokens = get_spl_tokens_from_wallet(wallet)
-        if not tokens:
-            continue
-        token_lines = []
-        for token in tokens:
-            try:
-                stats = get_token_stats(token['address'])
-                token_lines.append(format_token_stats(stats, label=label))
-            except Exception:
-                token_lines.append(f"⚠️ Failed to load stats for {token['symbol']}")
-        if token_lines:
-            all_tokens.append(f"<b>👛 {label}</b>\n" + "\n".join(token_lines))
+    symbol = context.args[0].lstrip("$")
+    try:
+        add_token(symbol)
+        update.message.reply_text(f"✅ Watching token: ${symbol.upper()}")
+    except Exception:
+        update.message.reply_text("⚠️ Error adding token.")
 
-    if not all_tokens:
-        message = "<b>Coins Held:</b>\n\n<i>No tokens found with non-zero balances in tracked wallets.</i>"
+def handle_tokens_command(update: Update, context: CallbackContext, via_callback=False):
+    tokens = get_tokens()
+    if not tokens:
+        msg = "No tokens being watched."
     else:
-        message = "<b>Coins Held:</b>\n\n" + "\n\n".join(all_tokens)
+        token_list = "\n".join([f"• ${t}" for t in tokens])
+        msg = f"<b>📋 Watched Tokens</b>\n{token_list}"
 
-    _send_response(update, message, via_callback)
-
-def _send_response(update, message, via_callback):
     if via_callback:
-        update.callback_query.edit_message_text(message, parse_mode='HTML', disable_web_page_preview=True)
+        context.bot.send_message(chat_id=update.effective_chat.id, text=msg, parse_mode=ParseMode.HTML)
     else:
-        update.message.reply_text(message, parse_mode='HTML', disable_web_page_preview=True)
+        update.message.reply_text(msg, parse_mode=ParseMode.HTML)
+
+def handle_removetoken_command(update: Update, context: CallbackContext):
+    if len(context.args) != 1:
+        update.message.reply_text("Usage: /removetoken $TOKEN")
+        return
+
+    symbol = context.args[0].lstrip("$")
+    try:
+        remove_token(symbol)
+        update.message.reply_text(f"✅ Removed token: ${symbol.upper()}")
+    except Exception:
+        update.message.reply_text("⚠️ Error removing token.")
+
+def get_tokens_list():
+    tokens = get_tokens()
+    if not tokens:
+        return "No tokens being watched."
+
+    return "<b>📋 Watched Tokens</b>\n" + "\n".join([f"• ${t}" for t in tokens])
