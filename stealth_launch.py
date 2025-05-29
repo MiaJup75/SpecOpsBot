@@ -1,7 +1,8 @@
 import os
 import requests
 import logging
-from telegram import Bot
+from telegram import Bot, Update
+from telegram.ext import CallbackContext
 from time import time
 
 logger = logging.getLogger(__name__)
@@ -72,3 +73,7 @@ def scan_new_tokens(bot: Bot):
                 f"More info: {url}"
             )
             bot.send_message(chat_id=chat_id, text=msg, parse_mode="HTML")
+
+def handle_scannew_command(update: Update, context: CallbackContext):
+    scan_new_tokens(context.bot)
+    update.message.reply_text("Manual stealth launch scan triggered.")
