@@ -7,17 +7,17 @@ from apscheduler.schedulers.background import BackgroundScheduler
 import pytz
 
 from utils import (
-    get_trending_coins, get_wallet_summary, get_full_daily_report,
-    HELP_TEXT, simulate_debug_output, get_pnl_report, get_sentiment_scores,
-    get_trade_prompt, get_narrative_classification
+    get_trending_coins, get_pnl_report, HELP_TEXT, simulate_debug_output,
+    get_sentiment_scores, get_trade_prompt, get_narrative_classification
 )
 from db import init_db, add_wallet, get_wallets, add_token, get_tokens, remove_token
 from price_alerts import check_price_targets
-from stealth_launch import scan_new_tokens, get_new_tokens
+from stealth_launch import scan_new_tokens
 from mirror_watch import check_mirror_wallets
 from botnet import check_botnet_activity
+from wallet import Wallet, get_wallet_summary
 from alerts import get_suspicious_activity_alerts
-from wallet import Wallet
+from new_token_watch import get_new_tokens
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -180,6 +180,7 @@ def webhook():
 
 def send_daily_report(bot: Bot):
     chat_id = os.getenv("CHAT_ID")
+    from utils import get_full_daily_report
     report = get_full_daily_report()
     bot.send_message(chat_id=chat_id, text=report, parse_mode=ParseMode.HTML)
 
