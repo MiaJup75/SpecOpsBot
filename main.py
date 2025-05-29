@@ -7,7 +7,10 @@ from apscheduler.schedulers.background import BackgroundScheduler
 import pytz
 
 from alerts import get_suspicious_activity_alerts
-from tokens import get_trending_coins, get_new_tokens, get_pnl_report, add_token, get_tokens, remove_token
+from trending import get_trending_coins
+from new_tokens import get_new_tokens
+from pnl import get_pnl_report
+from tokens import add_token, get_tokens, remove_token
 from wallets import get_wallet_summary, add_wallet, get_wallets
 from sentiment import get_sentiment_scores, get_trade_prompt, get_narrative_classification
 from reports import get_full_daily_report, simulate_debug_output
