@@ -7,10 +7,11 @@ from apscheduler.schedulers.background import BackgroundScheduler
 import pytz
 
 from utils import (
-    get_trending_coins, get_suspicious_activity_alerts, get_wallet_summary,
-    get_full_daily_report, HELP_TEXT, simulate_debug_output,
+    get_trending_coins, get_new_tokens,
+    get_wallet_summary, get_full_daily_report, HELP_TEXT, simulate_debug_output,
     get_pnl_report, get_sentiment_scores, get_trade_prompt, get_narrative_classification
 )
+from alerts import get_suspicious_activity_alerts
 from db import init_db, add_wallet, get_wallets, add_token, get_tokens, remove_token
 from price_alerts import check_price_targets
 from stealth_launch import scan_new_tokens
@@ -73,7 +74,7 @@ def handle_callback(update: Update, context: CallbackContext) -> None:
     func_map = {
         'wallets': get_wallet_summary,
         'trending': get_trending_coins,
-        'new': lambda: scan_new_tokens(updater.bot, return_text=True),
+        'new': get_new_tokens,
         'alerts': get_suspicious_activity_alerts,
         'pnl': get_pnl_report,
         'sentiment': get_sentiment_scores,
@@ -145,7 +146,7 @@ dispatcher.add_handler(CommandHandler("addtoken", addtoken_command))
 dispatcher.add_handler(CommandHandler("tokens", tokens_command))
 dispatcher.add_handler(CommandHandler("removetoken", removetoken_command))
 dispatcher.add_handler(CommandHandler("trending", lambda u, c: u.message.reply_text(get_trending_coins(), parse_mode=ParseMode.HTML)))
-dispatcher.add_handler(CommandHandler("new", lambda u, c: u.message.reply_text(scan_new_tokens(updater.bot, return_text=True), parse_mode=ParseMode.HTML)))
+dispatcher.add_handler(CommandHandler("new", lambda u, c: u.message.reply_text(get_new_tokens(), parse_mode=ParseMode.HTML)))
 dispatcher.add_handler(CommandHandler("alerts", lambda u, c: u.message.reply_text(get_suspicious_activity_alerts(), parse_mode=ParseMode.HTML)))
 dispatcher.add_handler(CommandHandler("debug", debug_command))
 dispatcher.add_handler(CommandHandler("pnl", lambda u, c: u.message.reply_text(get_pnl_report(), parse_mode=ParseMode.HTML)))
