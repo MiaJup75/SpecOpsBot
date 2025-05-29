@@ -1,37 +1,42 @@
-from db import add_token, get_tokens, remove_token
-from token_config import get_token_config
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+# tokens.py – Tier 5.2 Coins Held View
 
-def handle_add_token(update, context):
-    try:
-        if len(context.args) != 1:
-            update.message.reply_text("Usage: /addtoken $TOKEN")
-            return
-        symbol = context.args[0].lstrip("$").upper()
-        add_token(symbol)
-        update.message.reply_text(f"✅ Token added to watchlist: ${symbol}")
-    except Exception:
-        update.message.reply_text("⚠️ Error adding token.")
+from db import get_wallets
+from utils import get_spl_tokens_from_wallet, get_token_stats, format_token_stats
+from telegram import Update
+from telegram.ext import CallbackContext
 
-def handle_tokens(update, context):
-    tokens = get_tokens()
-    if not tokens:
-        update.message.reply_text("No tokens are currently being tracked.")
+def handle_tokens_command(update: Update, context: CallbackContext, via_callback=False):
+    wallets = get_wallets()
+    
+    if not wallets:
+        message = "<b>Coins Held:</b>\n\n<i>No wallets are being tracked yet.</i>\nUse /watch to add one."
+        _send_response(update, message, via_callback)
         return
-    buttons = [[InlineKeyboardButton(f"${token}", callback_data=f"token_{token}")] for token in tokens]
-    update.message.reply_text(
-        "<b>📋 Tracked Tokens</b>",
-        reply_markup=InlineKeyboardMarkup(buttons),
-        parse_mode="HTML"
-    )
 
-def handle_remove_token(update, context):
-    try:
-        if len(context.args) != 1:
-            update.message.reply_text("Usage: /removetoken $TOKEN")
-            return
-        symbol = context.args[0].lstrip("$").upper()
-        remove_token(symbol)
-        update.message.reply_text(f"🗑 Removed: ${symbol} from watchlist")
-    except Exception:
-        update.message.reply_text("⚠️ Could not remove token.")
+    all_tokens = []
+    for label, wallet in wallets:
+        tokens = get_spl_tokens_from_wallet(wallet)
+        if not tokens:
+            continue
+        token_lines = []
+        for token in tokens:
+            try:
+                stats = get_token_stats(token['address'])
+                token_lines.append(format_token_stats(stats, label=label))
+            except Exception:
+                token_lines.append(f"⚠️ Failed to load stats for {token['symbol']}")
+        if token_lines:
+            all_tokens.append(f"<b>👛 {label}</b>\n" + "\n".join(token_lines))
+
+    if not all_tokens:
+        message = "<b>Coins Held:</b>\n\n<i>No tokens found with non-zero balances in tracked wallets.</i>"
+    else:
+        message = "<b>Coins Held:</b>\n\n" + "\n\n".join(all_tokens)
+
+    _send_response(update, message, via_callback)
+
+def _send_response(update, message, via_callback):
+    if via_callback:
+        update.callback_query.edit_message_text(message, parse_mode='HTML', disable_web_page_preview=True)
+    else:
+        update.message.reply_text(message, parse_mode='HTML', disable_web_page_preview=True)
