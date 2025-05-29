@@ -5,10 +5,7 @@ import requests
 from solana.rpc.api import Client
 from solana.transaction import Transaction
 from solana.keypair import Keypair
-from solana.publickey import PublicKey
-from solana.system_program import SYS_PROGRAM_ID
 from solana.rpc.commitment import Confirmed
-from solana.rpc.async_api import AsyncClient
 from solana.rpc.types import TxOpts
 from solana.rpc.core import RPCException
 
@@ -33,12 +30,10 @@ class Wallet:
             raise
 
     def get_token_mint(self, symbol: str) -> str:
-        # Minimal example: extend with real mint data or API call
         token_mints = {
             "SOL": "So11111111111111111111111111111111111111112",
             "USDC": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
             "BONK": "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263",
-            # Add more token mints here
         }
         return token_mints.get(symbol.upper(), "")
 
@@ -50,12 +45,11 @@ class Wallet:
                 logger.error(f"Unknown token symbol or mint not configured: {token_symbol}")
                 return False
 
-            # Step 1: Get quote from Jupiter API
             params = {
-                "inputMint": "So11111111111111111111111111111111111111112",  # SOL mint
+                "inputMint": "So11111111111111111111111111111111111111112",
                 "outputMint": output_mint,
-                "amount": int(amount * 1e9),  # amount in lamports (1 SOL = 1e9 lamports)
-                "slippageBps": 50,  # 0.5% slippage tolerance
+                "amount": int(amount * 1e9),
+                "slippageBps": 50,
                 "onlyDirectRoutes": True
             }
             resp = requests.get(JUPITER_QUOTE_API, params=params)
@@ -67,10 +61,9 @@ class Wallet:
                 logger.error("No swap routes found from Jupiter API")
                 return False
 
-            best_route = routes[0]  # Pick the best route (lowest price impact)
+            best_route = routes[0]
             logger.info(f"Selected route: {best_route}")
 
-            # Step 2: Get swap transaction data from Jupiter API
             swap_params = {
                 "route": best_route,
                 "userPublicKey": str(self.keypair.public_key)
@@ -86,12 +79,14 @@ class Wallet:
             tx_bytes_base64 = swap_tx_data["swapTransaction"]
             tx_bytes = base64.b64decode(tx_bytes_base64)
 
-            # Step 3: Deserialize transaction and sign it
             transaction = Transaction.deserialize(tx_bytes)
             transaction.sign(self.keypair)
 
-            # Step 4: Send transaction
-            resp = self.client.send_transaction(transaction, self.keypair, opts=TxOpts(skip_preflight=False, preflight_commitment=Confirmed))
+            resp = self.client.send_transaction(
+                transaction,
+                self.keypair,
+                opts=TxOpts(skip_preflight=False, preflight_commitment=Confirmed)
+            )
             logger.info(f"Transaction sent: {resp}")
 
             if not resp.get("result"):
@@ -110,3 +105,17 @@ class Wallet:
         except Exception as e:
             logger.error(f"Unexpected error during swap: {e}")
             return False
+
+# ADD THIS TO SUPPORT /wallets COMMAND
+from db import get_wallets
+
+def get_wallet_summary():
+    wallets = get_wallets()
+    if not wallets:
+        return "<b>👛 Watched Wallets</b>\nNo wallets are currently being tracked."
+
+    summary = "<b>👛 Watched Wallets</b>\n\n"
+    for label, address in wallets:
+        summary += f"• {label}\n<code>{address}</code>\n\n"
+
+    return summary.strip()
