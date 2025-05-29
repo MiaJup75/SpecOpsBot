@@ -1,0 +1,29 @@
+# friend.py – Friend Wallet Sync & Activity Alerts
+
+import os
+import logging
+from telegram import Bot
+
+from wallet_db import get_wallets  # Pulls friend-labeled wallets
+from solana.transaction_utils import fetch_wallet_activity  # Assume utility exists or stub
+
+logger = logging.getLogger(__name__)
+
+def sync_friend_wallets(bot: Bot):
+    """Check friend wallets for activity and notify if recent trades occur."""
+    chat_id = os.getenv("CHAT_ID")
+    wallets = get_wallets()
+
+    for label, address in wallets:
+        if "friend" not in label.lower():
+            continue
+
+        try:
+            activity = fetch_wallet_activity(address)  # You can define this util later
+
+            if activity:
+                msg = f"🤝 Friend Wallet Alert ({label}):\nRecent Activity on {address}\n\n"
+                msg += "\n".join([f"{tx['type']} – ${tx['token']} – {tx['amount']}" for tx in activity])
+                bot.send_message(chat_id=chat_id, text=msg)
+        except Exception as e:
+            logger.error(f"[Friend] Error checking wallet {label}: {e}")
