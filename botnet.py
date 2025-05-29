@@ -1,16 +1,18 @@
+# botnet.py – Botnet Detection Handler with Cooldown Throttling
+
 import os
-import requests
-from telegram import Bot
-import logging
 import time
+import logging
+from telegram import Bot
 
 logger = logging.getLogger(__name__)
 
-# Keep track of last alert times per token to throttle repeated alerts
+# Alert cooldown system to avoid spam (per token)
 _last_alert_times = {}
-ALERT_COOLDOWN_SECONDS = 1800  # 30 minutes cooldown
+ALERT_COOLDOWN_SECONDS = 1800  # 30 minutes
 
 def can_alert(token_symbol: str) -> bool:
+    """Throttle repeated alerts for the same token within cooldown window."""
     now = time.time()
     last_alert = _last_alert_times.get(token_symbol)
     if last_alert and now - last_alert < ALERT_COOLDOWN_SECONDS:
@@ -19,8 +21,8 @@ def can_alert(token_symbol: str) -> bool:
     return True
 
 def check_botnet_activity(bot: Bot):
+    """Simulate detection and send alerts for suspicious botnet activity."""
     chat_id = os.getenv("CHAT_ID")
-    # Example suspicious activity tokens/messages
     alerts = [
         ("FAKE", "Botnet detected suspicious activity on $FAKE"),
         ("SCAM", "Unusual volume spikes on $SCAM"),
@@ -30,4 +32,4 @@ def check_botnet_activity(bot: Bot):
             if can_alert(token):
                 bot.send_message(chat_id=chat_id, text=f"🚨 {message}")
     except Exception as e:
-        logger.error(f"[Botnet] Error during botnet activity check: {e}")
+        logger.error(f"[Botnet] Error sending botnet alert: {e}")
