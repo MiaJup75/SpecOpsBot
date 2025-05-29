@@ -194,7 +194,7 @@ if __name__ == '__main__':
         BotCommand("trending", "View top trending meme coins"),
         BotCommand("new", "Show new token launches"),
         BotCommand("alerts", "Show whale/dev/suspicious alerts"),
-        BotCommand("pnl", "Check your token PnL"),
+        BotCommand("pnl", "Check token PnL"),
         BotCommand("sentiment", "See meme sentiment scores"),
         BotCommand("tradeprompt", "AI-generated trade idea"),
         BotCommand("classify", "Meme classification of tokens"),
