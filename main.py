@@ -1,5 +1,6 @@
 import logging
 import os
+import sys
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ParseMode, BotCommand, Bot
 from telegram.ext import Updater, CommandHandler, CallbackContext, CallbackQueryHandler, Dispatcher
 from flask import Flask, request
@@ -26,6 +27,12 @@ logger = logging.getLogger(__name__)
 
 TOKEN = os.getenv("BOT_TOKEN")
 PORT = int(os.environ.get('PORT', 10000))
+
+if not TOKEN:
+    logger.error("BOT_TOKEN environment variable is missing! Exiting...")
+    sys.exit(1)
+
+logger.info(f"Starting Flask app on port {PORT}")
 
 app = Flask(__name__)
 updater = Updater(token=TOKEN, use_context=True)
@@ -96,7 +103,8 @@ def watch_command(update: Update, context: CallbackContext) -> None:
     try:
         add_wallet(label, address)
         update.message.reply_text(f"✅ Watching wallet:\n<code>{address}</code>\nNickname: {label}", parse_mode=ParseMode.HTML)
-    except Exception:
+    except Exception as e:
+        logger.error(f"Error adding wallet: {e}")
         update.message.reply_text("⚠️ Error adding wallet.")
 
 def wallets_command(update: Update, context: CallbackContext) -> None:
@@ -104,7 +112,10 @@ def wallets_command(update: Update, context: CallbackContext) -> None:
     if not wallets:
         update.message.reply_text("No wallets being tracked.")
         return
-    msg = "<b>\U0001F4B3 Watched Wallets</b>\n" + "\n".join([f"• {label}\n<code>{addr}</code>" for label, addr in wallets])
+    if isinstance(wallets[0], tuple):
+        msg = "<b>\U0001F4B3 Watched Wallets</b>\n" + "\n".join([f"• {label}\n<code>{addr}</code>" for label, addr in wallets])
+    else:
+        msg = "<b>\U0001F4B3 Watched Wallets</b>\n" + "\n".join([f"• <code>{addr}</code>" for addr in wallets])
     update.message.reply_text(msg, parse_mode=ParseMode.HTML)
 
 def addtoken_command(update: Update, context: CallbackContext) -> None:
@@ -115,7 +126,8 @@ def addtoken_command(update: Update, context: CallbackContext) -> None:
     try:
         add_token(symbol)
         update.message.reply_text(f"✅ Watching token: ${symbol.upper()}")
-    except Exception:
+    except Exception as e:
+        logger.error(f"Error adding token: {e}")
         update.message.reply_text("⚠️ Error adding token.")
 
 def tokens_command(update: Update, context: CallbackContext) -> None:
@@ -134,7 +146,8 @@ def removetoken_command(update: Update, context: CallbackContext) -> None:
     try:
         remove_token(symbol)
         update.message.reply_text(f"✅ Removed token: ${symbol.upper()}")
-    except Exception:
+    except Exception as e:
+        logger.error(f"Error removing token: {e}")
         update.message.reply_text("⚠️ Error removing token.")
 
 def debug_command(update: Update, context: CallbackContext) -> None:
@@ -170,18 +183,29 @@ for job in jobs:
     scheduler.add_job(job["func"], job["trigger"], **{k: v for k, v in job.items() if k not in ["func", "trigger"]})
 scheduler.start()
 
+@app.route('/health')
+def health():
+    return "ok", 200
+
 @app.route('/')
 def index():
     return "SpecOpsBot is running."
 
 @app.route(f'/{TOKEN}', methods=['POST'])
 def webhook():
-    update = Update.de_json(request.get_json(force=True), updater.bot)
-    dispatcher.process_update(update)
-    return 'ok'
+    try:
+        update = Update.de_json(request.get_json(force=True), updater.bot)
+        dispatcher.process_update(update)
+        return 'ok'
+    except Exception as e:
+        logger.error(f"Webhook error: {e}")
+        return 'error', 500
 
 def send_daily_report(bot: Bot):
     chat_id = os.getenv("CHAT_ID")
+    if not chat_id:
+        logger.warning("CHAT_ID not set, daily report not sent.")
+        return
     report = get_full_daily_report()
     bot.send_message(chat_id=chat_id, text=report, parse_mode=ParseMode.HTML)
 
