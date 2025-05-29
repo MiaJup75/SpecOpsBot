@@ -106,8 +106,9 @@ class Wallet:
             logger.error(f"Unexpected error during swap: {e}")
             return False
 
-# ADD THIS TO SUPPORT /wallets COMMAND
-from db import get_wallets
+# Wallet summary and add/remove logic
+
+from db import get_wallets, add_wallet as db_add_wallet, remove_wallet as db_remove_wallet
 
 def get_wallet_summary():
     wallets = get_wallets()
@@ -119,3 +120,11 @@ def get_wallet_summary():
         summary += f"• {label}\n<code>{address}</code>\n\n"
 
     return summary.strip()
+
+def add_wallet(label: str, address: str):
+    """Add a wallet to the tracked list."""
+    return db_add_wallet(label, address)
+
+def remove_wallet(label_or_address: str):
+    """Remove a wallet from the tracked list by label or address."""
+    return db_remove_wallet(label_or_address)
