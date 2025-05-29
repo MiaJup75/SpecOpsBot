@@ -34,6 +34,18 @@ def fetch_trending_tokens(limit=10):
         print(f"Error fetching trending tokens: {e}")
         return []
 
+def safe_float(val, default="N/A"):
+    try:
+        return float(val)
+    except Exception:
+        return default
+
+def safe_int(val, default="N/A"):
+    try:
+        return int(float(val))
+    except Exception:
+        return default
+
 def get_trending_coins():
     trending = fetch_trending_tokens()
     if not trending:
@@ -41,8 +53,11 @@ def get_trending_coins():
 
     msg = "<b>🔥 Top Trending Solana Tokens</b>\n"
     for token in trending:
-        msg += f"\n<b>{token['symbol']}</b> – ${float(token['price']):.4f}\n"
-        msg += f"💰 MCap: ${int(token['market_cap']):,} | 📊 Vol: ${int(token['volume']):,}\n"
+        price = safe_float(token['price'], "N/A")
+        market_cap = safe_int(token['market_cap'], "N/A")
+        volume = safe_int(token['volume'], "N/A")
+        msg += f"\n<b>{token['symbol']}</b> – ${price if price=='N/A' else f'{price:.4f}'}\n"
+        msg += f"💰 MCap: ${market_cap if market_cap=='N/A' else f'{market_cap:,}'} | 📊 Vol: ${volume if volume=='N/A' else f'{volume:,}'}\n"
         msg += f"<a href='{token['link']}'>🔗 Dexscreener</a>\n"
         msg += "—" * 15 + "\n"
     return msg
@@ -57,8 +72,11 @@ def handle_trending_command(update: Update, context: CallbackContext):
     buttons = []
 
     for token in trending:
-        msg += f"\n<b>{token['symbol']}</b> – ${float(token['price']):.4f}\n"
-        msg += f"💰 MCap: ${int(token['market_cap']):,} | 📊 Vol: ${int(token['volume']):,}\n"
+        price = safe_float(token['price'], "N/A")
+        market_cap = safe_int(token['market_cap'], "N/A")
+        volume = safe_int(token['volume'], "N/A")
+        msg += f"\n<b>{token['symbol']}</b> – ${price if price=='N/A' else f'{price:.4f}'}\n"
+        msg += f"💰 MCap: ${market_cap if market_cap=='N/A' else f'{market_cap:,}'} | 📊 Vol: ${volume if volume=='N/A' else f'{volume:,}'}\n"
         msg += f"<a href='{token['link']}'>🔗 Dexscreener</a>\n"
         msg += "—" * 15 + "\n"
 
