@@ -4,3 +4,4 @@ requests
 apscheduler
 pytz
 solana==0.26.0
+base58
