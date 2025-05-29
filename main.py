@@ -7,7 +7,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 import pytz
 
 from utils import (
-    get_max_token_stats, get_trending_coins, get_new_tokens, get_suspicious_activity_alerts,
+    get_trending_coins, get_new_tokens, get_suspicious_activity_alerts,
     get_wallet_summary, get_full_daily_report, HELP_TEXT, simulate_debug_output,
     get_pnl_report, get_sentiment_scores, get_trade_prompt, get_narrative_classification
 )
@@ -30,8 +30,7 @@ dispatcher: Dispatcher = updater.dispatcher
 
 def get_main_keyboard():
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("💰 MAX", callback_data='max'),
-         InlineKeyboardButton("👛 Wallets", callback_data='wallets')],
+        [InlineKeyboardButton("👛 Wallets", callback_data='wallets')],
         [InlineKeyboardButton("📈 Trending", callback_data='trending'),
          InlineKeyboardButton("🆕 New", callback_data='new')],
         [InlineKeyboardButton("🚨 Alerts", callback_data='alerts'),
@@ -46,13 +45,13 @@ def get_main_keyboard():
 
 def start(update: Update, context: CallbackContext) -> None:
     update.message.reply_text(
-        """<b>👋 Welcome to SolMadSpecBot!</b>
+        """<b>👋 Welcome to SpecOpsBot!</b>
 
 Use the buttons below or type:
-/max /wallets /trending  
-/new /alerts /debug  
-/pnl /sentiment /tradeprompt /classify  
-/watch &lt;wallet&gt; /addtoken $TOKEN /tokens
+/wallets /trending /new  
+/alerts /debug /pnl  
+/sentiment /tradeprompt /classify  
+/watch <wallet> /addtoken $TOKEN /tokens
 
 Daily updates sent at 9AM Bangkok time (GMT+7).""",
         reply_markup=get_main_keyboard(),
@@ -61,7 +60,7 @@ Daily updates sent at 9AM Bangkok time (GMT+7).""",
 
 def panel_command(update: Update, context: CallbackContext) -> None:
     update.message.reply_text(
-        "🔘 <b>SolMadSpecBot Panel</b>\nTap a button below:",
+        "🔘 <b>SpecOpsBot Panel</b>\nTap a button below:",
         reply_markup=get_main_keyboard(),
         parse_mode=ParseMode.HTML
     )
@@ -72,7 +71,6 @@ def handle_callback(update: Update, context: CallbackContext) -> None:
     command = query.data
 
     func_map = {
-        'max': get_max_token_stats,
         'wallets': get_wallet_summary,
         'trending': get_trending_coins,
         'new': get_new_tokens,
@@ -141,7 +139,6 @@ def debug_command(update: Update, context: CallbackContext) -> None:
 
 dispatcher.add_handler(CommandHandler("start", start))
 dispatcher.add_handler(CommandHandler("panel", panel_command))
-dispatcher.add_handler(CommandHandler("max", lambda u, c: u.message.reply_text(get_max_token_stats(), parse_mode=ParseMode.HTML)))
 dispatcher.add_handler(CommandHandler("wallets", wallets_command))
 dispatcher.add_handler(CommandHandler("watch", watch_command))
 dispatcher.add_handler(CommandHandler("addtoken", addtoken_command))
@@ -155,11 +152,9 @@ dispatcher.add_handler(CommandHandler("pnl", lambda u, c: u.message.reply_text(g
 dispatcher.add_handler(CommandHandler("sentiment", lambda u, c: u.message.reply_text(get_sentiment_scores(), parse_mode=ParseMode.HTML)))
 dispatcher.add_handler(CommandHandler("tradeprompt", lambda u, c: u.message.reply_text(get_trade_prompt(), parse_mode=ParseMode.HTML)))
 dispatcher.add_handler(CommandHandler("classify", lambda u, c: u.message.reply_text(get_narrative_classification(), parse_mode=ParseMode.HTML)))
-
 dispatcher.add_handler(CallbackQueryHandler(handle_callback))
 
 scheduler = BackgroundScheduler(timezone=pytz.timezone("Asia/Bangkok"))
-
 jobs = [
     {"func": lambda: scan_new_tokens(updater.bot), "trigger": "interval", "minutes": 5},
     {"func": lambda: check_price_targets(updater.bot), "trigger": "interval", "minutes": 10},
@@ -172,14 +167,9 @@ for job in jobs:
     scheduler.add_job(job["func"], job["trigger"], **{k: v for k, v in job.items() if k not in ["func", "trigger"]})
 scheduler.start()
 
-def send_daily_report(bot: Bot):
-    chat_id = os.getenv("CHAT_ID")
-    report = get_full_daily_report()
-    bot.send_message(chat_id=chat_id, text=report, parse_mode=ParseMode.HTML)
-
 @app.route('/')
 def index():
-    return "SolMadSpecBot is running."
+    return "SpecOpsBot is running."
 
 @app.route(f'/{TOKEN}', methods=['POST'])
 def webhook():
@@ -187,11 +177,15 @@ def webhook():
     dispatcher.process_update(update)
     return 'ok'
 
+def send_daily_report(bot: Bot):
+    chat_id = os.getenv("CHAT_ID")
+    report = get_full_daily_report()
+    bot.send_message(chat_id=chat_id, text=report, parse_mode=ParseMode.HTML)
+
 if __name__ == '__main__':
     init_db()
     updater.bot.set_my_commands([
         BotCommand("start", "Show welcome message and buttons"),
-        BotCommand("max", "Show MAX token stats"),
         BotCommand("wallets", "List all watched wallets"),
         BotCommand("watch", "Add a new wallet to watch"),
         BotCommand("addtoken", "Add a token to watch"),
@@ -200,7 +194,7 @@ if __name__ == '__main__':
         BotCommand("trending", "View top trending meme coins"),
         BotCommand("new", "Show new token launches"),
         BotCommand("alerts", "Show whale/dev/suspicious alerts"),
-        BotCommand("pnl", "Check your MAX token PnL"),
+        BotCommand("pnl", "Check your token PnL"),
         BotCommand("sentiment", "See meme sentiment scores"),
         BotCommand("tradeprompt", "AI-generated trade idea"),
         BotCommand("classify", "Meme classification of tokens"),
