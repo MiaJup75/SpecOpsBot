@@ -12,11 +12,11 @@ from trending import get_trending_coins
 from new_tokens import get_new_tokens
 from pnl import get_pnl_report
 from tokens import add_token, get_tokens, remove_token
-from wallets import get_wallet_summary, add_wallet, get_wallets
+from wallets import get_wallet_summary, add_wallet, get_wallets, remove_wallet
 from sentiment import get_sentiment_scores, get_trade_prompt, get_narrative_classification
 from reports import get_full_daily_report, simulate_debug_output
 from price_alerts import check_price_targets
-from stealth_launch import scan_new_tokens
+from stealth_launch import scan_new_tokens, handle_scannew_command
 from mirror_watch import check_mirror_wallets
 from botnet import check_botnet_activity
 from db import init_db
@@ -107,15 +107,24 @@ def watch_command(update: Update, context: CallbackContext) -> None:
         logger.error(f"Error adding wallet: {e}")
         update.message.reply_text("⚠️ Error adding wallet.")
 
+def removewallet_command(update: Update, context: CallbackContext) -> None:
+    if len(context.args) < 1:
+        update.message.reply_text("Usage: /removewallet <wallet_address|nickname>")
+        return
+    label_or_address = context.args[0]
+    try:
+        remove_wallet(label_or_address)
+        update.message.reply_text(f"✅ Removed wallet: {label_or_address}")
+    except Exception as e:
+        logger.error(f"Error removing wallet: {e}")
+        update.message.reply_text("⚠️ Error removing wallet.")
+
 def wallets_command(update: Update, context: CallbackContext) -> None:
     wallets = get_wallets()
     if not wallets:
         update.message.reply_text("No wallets being tracked.")
         return
-    if isinstance(wallets[0], tuple):
-        msg = "<b>\U0001F4B3 Watched Wallets</b>\n" + "\n".join([f"• {label}\n<code>{addr}</code>" for label, addr in wallets])
-    else:
-        msg = "<b>\U0001F4B3 Watched Wallets</b>\n" + "\n".join([f"• <code>{addr}</code>" for addr in wallets])
+    msg = "<b>\U0001F4B3 Watched Wallets</b>\n" + "\n".join([f"• {label}\n<code>{addr}</code>" for label, addr in wallets])
     update.message.reply_text(msg, parse_mode=ParseMode.HTML)
 
 def addtoken_command(update: Update, context: CallbackContext) -> None:
@@ -153,10 +162,14 @@ def removetoken_command(update: Update, context: CallbackContext) -> None:
 def debug_command(update: Update, context: CallbackContext) -> None:
     update.message.reply_text(simulate_debug_output(), parse_mode=ParseMode.HTML)
 
+def scannew_command(update: Update, context: CallbackContext) -> None:
+    handle_scannew_command(update, context)
+
 dispatcher.add_handler(CommandHandler("start", start))
 dispatcher.add_handler(CommandHandler("panel", panel_command))
 dispatcher.add_handler(CommandHandler("wallets", wallets_command))
 dispatcher.add_handler(CommandHandler("watch", watch_command))
+dispatcher.add_handler(CommandHandler("removewallet", removewallet_command))
 dispatcher.add_handler(CommandHandler("addtoken", addtoken_command))
 dispatcher.add_handler(CommandHandler("tokens", tokens_command))
 dispatcher.add_handler(CommandHandler("removetoken", removetoken_command))
@@ -168,6 +181,7 @@ dispatcher.add_handler(CommandHandler("pnl", lambda u, c: u.message.reply_text(g
 dispatcher.add_handler(CommandHandler("sentiment", lambda u, c: u.message.reply_text(get_sentiment_scores(), parse_mode=ParseMode.HTML)))
 dispatcher.add_handler(CommandHandler("tradeprompt", lambda u, c: u.message.reply_text(get_trade_prompt(), parse_mode=ParseMode.HTML)))
 dispatcher.add_handler(CommandHandler("classify", lambda u, c: u.message.reply_text(get_narrative_classification(), parse_mode=ParseMode.HTML)))
+dispatcher.add_handler(CommandHandler("scannew", scannew_command))
 dispatcher.add_handler(CallbackQueryHandler(handle_callback))
 
 scheduler = BackgroundScheduler(timezone=pytz.timezone("Asia/Bangkok"))
@@ -215,6 +229,7 @@ if __name__ == '__main__':
         BotCommand("start", "Show welcome message and buttons"),
         BotCommand("wallets", "List all watched wallets"),
         BotCommand("watch", "Add a new wallet to watch"),
+        BotCommand("removewallet", "Remove a wallet from watchlist"),
         BotCommand("addtoken", "Add a token to watch"),
         BotCommand("removetoken", "Remove a token from watchlist"),
         BotCommand("tokens", "List all tracked tokens"),
@@ -226,6 +241,7 @@ if __name__ == '__main__':
         BotCommand("tradeprompt", "AI-generated trade idea"),
         BotCommand("classify", "Meme classification of tokens"),
         BotCommand("debug", "Run simulated debug outputs"),
-        BotCommand("panel", "Show the main panel")
+        BotCommand("panel", "Show the main panel"),
+        BotCommand("scannew", "Manually scan for stealth launches")
     ])
     app.run(host='0.0.0.0', port=PORT)
