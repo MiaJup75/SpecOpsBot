@@ -1,12 +1,12 @@
-# wallets.py – Command handlers for /wallets and /watch
+# wallets.py – Wallet Watch Commands & Summary
 
-from telegram import Update
+from telegram import Update, ParseMode
 from telegram.ext import CallbackContext
-from wallet_db import add_wallet, get_wallets
+from db import add_wallet, get_wallets
 
-def handle_watch_command(update: Update, context: CallbackContext) -> None:
+def handle_watch_command(update: Update, context: CallbackContext):
     if len(context.args) < 1:
-        update.message.reply_text("Usage: /watch <wallet_address> [optional_label]")
+        update.message.reply_text("Usage: /watch <wallet_address> [nickname]")
         return
 
     address = context.args[0]
@@ -14,21 +14,31 @@ def handle_watch_command(update: Update, context: CallbackContext) -> None:
     
     try:
         add_wallet(label, address)
-        update.message.reply_text(f"✅ Now watching wallet:\n<code>{address}</code>\nLabel: <b>{label}</b>",
-                                  parse_mode="HTML")
+        update.message.reply_text(
+            f"✅ Watching wallet:\n<code>{address}</code>\nNickname: {label}",
+            parse_mode=ParseMode.HTML
+        )
     except Exception:
         update.message.reply_text("⚠️ Error adding wallet.")
 
-def handle_wallets_command(update: Update, context: CallbackContext, via_callback=False) -> None:
+def handle_wallets_command(update: Update, context: CallbackContext, via_callback=False):
     wallets = get_wallets()
-
     if not wallets:
-        msg = "<b>👛 Watched Wallets</b>\n\nNo wallets are currently being tracked.\nUse /watch to add one."
+        msg = "No wallets are currently being tracked."
     else:
-        lines = [f"• <b>{label}</b>\n<code>{addr}</code>" for label, addr in wallets]
-        msg = "<b>👛 Watched Wallets</b>\n\n" + "\n\n".join(lines)
-
+        msg = "<b>👛 Watched Wallets</b>\n" + "\n".join(
+            [f"• {label}\n<code>{addr}</code>" for label, addr in wallets]
+        )
     if via_callback:
-        update.callback_query.edit_message_text(msg, parse_mode='HTML')
+        context.bot.send_message(chat_id=update.effective_chat.id, text=msg, parse_mode=ParseMode.HTML)
     else:
-        update.message.reply_text(msg, parse_mode='HTML')
+        update.message.reply_text(msg, parse_mode=ParseMode.HTML)
+
+def get_wallet_summary():
+    wallets = get_wallets()
+    if not wallets:
+        return "No wallets are currently being tracked."
+    
+    return "<b>👛 Watched Wallets</b>\n" + "\n".join(
+        [f"• {label}\n<code>{addr}</code>" for label, addr in wallets]
+    )
