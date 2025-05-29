@@ -1,33 +1,62 @@
-# wallet_db.py – Tracks watched wallets using SQLite
+# wallet_db.py – Wallet Watch & Mirror Tracking
 
 import sqlite3
-import os
 
-DB_PATH = os.getenv("SQLITE_PATH", "tokens.db")
+DB_NAME = "solmad.db"
 
 def init_wallet_db():
-    with sqlite3.connect(DB_PATH) as conn:
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS wallets (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                label TEXT NOT NULL,
-                address TEXT NOT NULL UNIQUE
-            );
-        """)
-        conn.commit()
+    conn = sqlite3.connect(DB_NAME)
+    c = conn.cursor()
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS wallets (
+            label TEXT,
+            address TEXT PRIMARY KEY,
+            last_tx TEXT
+        )
+    ''')
+    conn.commit()
+    conn.close()
 
-def add_wallet(label: str, address: str):
-    with sqlite3.connect(DB_PATH) as conn:
-        conn.execute("INSERT OR REPLACE INTO wallets (label, address) VALUES (?, ?)", (label, address))
-        conn.commit()
+def add_wallet(label, address):
+    conn = sqlite3.connect(DB_NAME)
+    c = conn.cursor()
+    c.execute("INSERT OR IGNORE INTO wallets (label, address) VALUES (?, ?)", (label, address))
+    conn.commit()
+    conn.close()
+
+def remove_wallet(address):
+    conn = sqlite3.connect(DB_NAME)
+    c = conn.cursor()
+    c.execute("DELETE FROM wallets WHERE address = ?", (address,))
+    conn.commit()
+    conn.close()
 
 def get_wallets():
-    with sqlite3.connect(DB_PATH) as conn:
-        cur = conn.cursor()
-        cur.execute("SELECT label, address FROM wallets ORDER BY id DESC")
-        return cur.fetchall()
+    conn = sqlite3.connect(DB_NAME)
+    c = conn.cursor()
+    c.execute("SELECT label, address FROM wallets")
+    results = c.fetchall()
+    conn.close()
+    return results
 
-def remove_wallet(address: str):
-    with sqlite3.connect(DB_PATH) as conn:
-        conn.execute("DELETE FROM wallets WHERE address = ?", (address,))
-        conn.commit()
+def get_wallet_last_tx(address):
+    conn = sqlite3.connect(DB_NAME)
+    c = conn.cursor()
+    c.execute("SELECT last_tx FROM wallets WHERE address = ?", (address,))
+    row = c.fetchone()
+    conn.close()
+    return row[0] if row else None
+
+def update_wallet_last_tx(address, last_tx):
+    conn = sqlite3.connect(DB_NAME)
+    c = conn.cursor()
+    c.execute("UPDATE wallets SET last_tx = ? WHERE address = ?", (last_tx, address))
+    conn.commit()
+    conn.close()
+
+def clear_wallets():
+    conn = sqlite3.connect(DB_NAME)
+    c = conn.cursor()
+    c.execute("DELETE FROM wallets")
+    conn.commit()
+    conn.close()
