@@ -44,10 +44,14 @@ def add_wallet(label, address):
     conn.commit()
     conn.close()
 
-def remove_wallet(address):
+def remove_wallet(label_or_address):
+    """Remove wallet by label or address."""
     conn = sqlite3.connect(DB_NAME)
     c = conn.cursor()
-    c.execute("DELETE FROM wallets WHERE address = ?", (address,))
+    # Try to remove by address
+    c.execute("DELETE FROM wallets WHERE address = ?", (label_or_address,))
+    # Also remove by label in case user provided the nickname
+    c.execute("DELETE FROM wallets WHERE label = ?", (label_or_address,))
     conn.commit()
     conn.close()
 
