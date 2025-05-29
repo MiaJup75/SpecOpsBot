@@ -49,3 +49,8 @@ def get_wallets_list():
         return "No wallets being watched."
 
     return "<b>👀 Watched Wallets</b>\n" + "\n".join([f"• <code>{w}</code>" for w in wallets])
+
+# --- ADDED FOR COMPATIBILITY WITH main.py ---
+def get_wallet_summary():
+    """Alias for main.py compatibility."""
+    return get_wallets_list()
